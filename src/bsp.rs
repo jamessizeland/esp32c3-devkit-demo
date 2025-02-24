@@ -37,7 +37,7 @@ use esp_hal::{
     clock::CpuClock,
     gpio::{Input, Pull},
     i2c::master::{Config, I2c},
-    rmt::{self, Rmt},
+    rmt::Rmt,
     rng::Rng,
     time::RateExtU32,
     timer::systimer::SystemTimer,
@@ -47,14 +47,14 @@ use esp_wifi::{EspWifiController, ble::controller::BleConnector};
 use log::info;
 use static_cell::StaticCell;
 
+use crate::led::Led;
+
 pub type I2cType<'a> = I2c<'a, esp_hal::Async>;
 pub type I2cBus<'a> = NoopMutex<RefCell<I2cType<'a>>>;
 pub type I2cBusDevice<'a> = shared_bus::blocking::i2c::I2cDevice<'a, NoopRawMutex, I2cType<'a>>;
 
 const SLOTS: usize = 20;
 pub type BleController = ExternalController<BleConnector<'static>, SLOTS>;
-
-pub type Led = SmartLedsAdapter<rmt::Channel<esp_hal::Blocking, 0>, 25>;
 
 /// Board-specific peripherals.
 pub struct Board {
