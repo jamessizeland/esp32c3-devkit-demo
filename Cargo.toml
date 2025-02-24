@@ -4,29 +4,35 @@ name = "esp32c3-devkit-demo"
 version = "0.1.0"
 
 [dependencies]
+# HAL stuff
+esp-hal = { version = "0.23.1", features = ["unstable"] }
 embedded-io = "0.6.1"
 embedded-io-async = "0.6.1"
-log = { version = "0.4.21" }
 critical-section = "1.2.0"
 
-esp-backtrace = { version = "0.15.0", features = [
+# Logging
+esp-println = { version = "0.13.1", features = ["log"] }
+log = { version = "0.4.21" }
+esp-backtrace = { version = "0.15.1", features = [
   "exception-handler",
   "panic-handler",
   "println",
 ] }
-esp-hal = { version = "0.23.1", features = ["unstable"] }
-esp-println = { version = "0.13.0", features = ["log"] }
 
+# Misc stuff
 heapless = { version = "0.8.0", default-features = false }
 static_cell = { version = "2.1.0" }
+ector = { version = "0.7.0", default-features = false }
 
+# Embassy stuff
 embassy-executor = { version = "0.7.0", features = ["task-arena-size-20480"] }
 embassy-time = { version = "0.4.0", features = ["generic-queue-8"] }
 esp-hal-embassy = { version = "0.6.0", features = [] }
 embassy-embedded-hal = "0.3.0"
 embassy-sync = "0.6.0"
+embassy-futures = "0.1.1"
 
-# RGB LED Stuff
+# RGB LED stuff
 smart-leds = "0.4.0"
 esp-hal-smartled = { git = "https://github.com/esp-rs/esp-hal-community.git" }
 
