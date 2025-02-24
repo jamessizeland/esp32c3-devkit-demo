@@ -4,6 +4,8 @@
 //! The actor can be controlled by sending messages to it.
 //! The actor can be created with a spawner and a configuration.
 
+use actor_private::*;
+use embassy_executor::Spawner;
 use esp_hal::rmt;
 use esp_hal_smartled::SmartLedsAdapter;
 use log::{error, info};
@@ -60,135 +62,134 @@ pub struct Config {
 
 /// Create a new actor with a spawner and a configuration.
 /// This pattern could be made into a macro to simplify the actor creation.
-pub fn spawn_actor(
-    spawner: embassy_executor::Spawner,
-    config: Config,
-) -> Result<ActorInbox<Message>, SpawnError> {
+pub fn spawn_actor(spawner: Spawner, config: Config) -> Result<ActorInbox<Message>, SpawnError> {
     static CONTEXT: ActorContext<LedActor> = ActorContext::new();
     let inbox = CONTEXT.address();
     spawner.spawn(actor_task(&CONTEXT, LedActor::new(spawner, config, inbox)))?;
     Ok(inbox)
 }
 
-/** Private Elements of the Actor Below */
+mod actor_private {
 
-/// A scheduler to run a sequence of actions.
-struct Scheduler {
-    /// The timer to schedule the next action
-    timer: Timer,
-    /// The period between actions
-    period: Duration,
-    /// The current sequence of colours
-    sequence: &'static [RGB8],
-    /// The current index in the sequence
-    index: usize,
-    /// The current repeat mode
-    repeat: Repeat,
-}
+    use super::*;
+    /// A scheduler to run a sequence of actions.
+    struct Scheduler {
+        /// The timer to schedule the next action
+        timer: Timer,
+        /// The period between actions
+        period: Duration,
+        /// The current sequence of colours
+        sequence: &'static [RGB8],
+        /// The current index in the sequence
+        index: usize,
+        /// The current repeat mode
+        repeat: Repeat,
+    }
 
-/// The actor's private data, not to be shared with other actors.
-/// This is where the actor's state is stored.
-struct LedActor {
-    /// A timer to schedule the next message
-    scheduler: Option<Scheduler>,
-    /// The LED to control
-    led: Led,
-    /// The current colour of the LED
-    colour: RGB8,
-    /// The current brightness of the LED
-    /// This is a percentage from 0 to 100
-    brightness: u8,
-}
+    /// The actor's private data, not to be shared with other actors.
+    /// This is where the actor's state is stored.
+    pub(super) struct LedActor {
+        /// A timer to schedule the next message
+        scheduler: Option<Scheduler>,
+        /// The LED to control
+        led: Led,
+        /// The current colour of the LED
+        colour: RGB8,
+        /// The current brightness of the LED
+        /// This is a percentage from 0 to 100
+        brightness: u8,
+    }
 
-impl Actor for LedActor {
-    type Message = Message;
+    impl Actor for LedActor {
+        type Message = Message;
 
-    /// Actor pattern for either handling new incoming messages or running a scheduled action.
-    async fn on_mount<M>(&mut self, _: DynamicAddress<Message>, mut inbox: M) -> !
-    where
-        M: Inbox<Self::Message>,
-    {
-        info!("LED Task started!");
-        loop {
-            let deadline = async {
-                match self.scheduler.as_mut() {
-                    Some(Scheduler { timer, .. }) => timer.await,
-                    None => pending().await,
+        /// Actor pattern for either handling new incoming messages or running a scheduled action.
+        async fn on_mount<M>(&mut self, _: DynamicAddress<Message>, mut inbox: M) -> !
+        where
+            M: Inbox<Self::Message>,
+        {
+            info!("LED Task started!");
+            loop {
+                let deadline = async {
+                    match self.scheduler.as_mut() {
+                        Some(Scheduler { timer, .. }) => timer.await,
+                        None => pending().await,
+                    }
+                };
+                match select(inbox.next(), deadline).await {
+                    Either::First(action) => self.act(action).await,
+                    Either::Second(_) => self.next().await,
                 }
+            }
+        }
+    }
+
+    impl LedActor {
+        /// Create a new actor with a spawner and a configuration.
+        pub(super) fn new(_: Spawner, config: Config, _: ActorInbox<Message>) -> Self {
+            // Opportunity to do any setup before mounting the actor
+            // this could include spawning child actors or setting up resources
+            // we have access to our own inbox here to send down to child actors.
+            Self {
+                led: config.led,
+                scheduler: None,
+                colour: RGB8 { r: 0, g: 0, b: 0 },
+                brightness: 50,
+            }
+        }
+        /// The message handler
+        async fn act(&mut self, msg: Message) {
+            self.scheduler = None; // cancel any scheduled actions
+            match msg {
+                Message::SetColour(colour) => {
+                    self.colour = colour;
+                    write(&mut self.led, colour, self.brightness)
+                }
+                Message::SetBrightness(level) => {
+                    self.brightness = level;
+                    write(&mut self.led, self.colour, level)
+                }
+                Message::Off => write(&mut self.led, BLACK, 0),
+                Message::On => write(&mut self.led, self.colour, self.brightness),
+                Message::SetSequence((sequence, period, repeat)) => {
+                    self.scheduler = Some(Scheduler {
+                        timer: Timer::after(period),
+                        period,
+                        sequence,
+                        index: 0,
+                        repeat,
+                    });
+                }
+            }
+        }
+        /// Run the next scheduled action.
+        async fn next(&mut self) {
+            let Some(scheduler) = self.scheduler.as_mut() else {
+                return; // no scheduled action
             };
-            match select(inbox.next(), deadline).await {
-                Either::First(action) => self.act(action).await,
-                Either::Second(_) => self.next().await,
-            }
-        }
-    }
-}
-
-impl LedActor {
-    /// Create a new actor with a spawner and a configuration.
-    fn new(_: embassy_executor::Spawner, config: Config, _: ActorInbox<Message>) -> Self {
-        // Opportunity to do any setup before mounting the actor
-        // this could include spawning child actors or setting up resources
-        // we have access to our own inbox here to send down to child actors.
-        Self {
-            led: config.led,
-            scheduler: None,
-            colour: RGB8 { r: 0, g: 0, b: 0 },
-            brightness: 50,
-        }
-    }
-    /// The message handler
-    async fn act(&mut self, msg: Message) {
-        self.scheduler = None; // cancel any scheduled actions
-        match msg {
-            Message::SetColour(colour) => {
-                self.colour = colour;
-                write(&mut self.led, colour, self.brightness)
-            }
-            Message::SetBrightness(level) => {
-                self.brightness = level;
-                write(&mut self.led, self.colour, level)
-            }
-            Message::Off => write(&mut self.led, BLACK, 0),
-            Message::On => write(&mut self.led, self.colour, self.brightness),
-            Message::SetSequence((sequence, period, repeat)) => {
-                self.scheduler = Some(Scheduler {
-                    timer: Timer::after(period),
-                    period,
-                    sequence,
-                    index: 0,
-                    repeat,
-                });
-            }
-        }
-    }
-    /// Run the next scheduled action.
-    async fn next(&mut self) {
-        let Some(scheduler) = self.scheduler.as_mut() else {
-            return; // no scheduled action
-        };
-        scheduler.timer = Timer::after(scheduler.period);
-        // run the next action in the sequence.
-        match scheduler.sequence.get(scheduler.index) {
-            Some(&colour) => {
-                write(&mut self.led, colour, self.brightness);
-                scheduler.index += 1;
-            }
-            None => {
-                // if we've reached the end of the sequence, handle the repeat mode.
-                match scheduler.repeat {
-                    Repeat::Once => self.scheduler = None,
-                    Repeat::N(0) => self.scheduler = None,
-                    Repeat::N(n) => scheduler.repeat = Repeat::N(n - 1),
-                    Repeat::Forever => scheduler.index = 0,
+            scheduler.timer = Timer::after(scheduler.period);
+            // run the next action in the sequence.
+            match scheduler.sequence.get(scheduler.index) {
+                Some(&colour) => {
+                    write(&mut self.led, colour, self.brightness);
+                    scheduler.index += 1;
+                }
+                None => {
+                    // if we've reached the end of the sequence, handle the repeat mode.
+                    match scheduler.repeat {
+                        Repeat::Once => self.scheduler = None,
+                        Repeat::N(0) => self.scheduler = None,
+                        Repeat::N(n) => scheduler.repeat = Repeat::N(n - 1),
+                        Repeat::Forever => scheduler.index = 0,
+                    }
                 }
             }
         }
     }
-}
 
-#[embassy_executor::task]
-/// The actor's task, to be spawned by the actor's context.
-async fn actor_task(context: &'static ActorContext<LedActor>, actor: LedActor) {
-    context.mount(actor).await;
+    #[embassy_executor::task]
+    /// The actor's task, to be spawned by the actor's context.
+    pub(super) async fn actor_task(context: &'static ActorContext<LedActor>, actor: LedActor) {
+        context.mount(actor).await;
+    }
 }
