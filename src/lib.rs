@@ -3,7 +3,7 @@
 use ector::mutex::NoopRawMutex;
 use embassy_sync::channel::Sender;
 
-// pub mod ambient;
+pub mod ambient;
 // pub mod ble;
 pub mod bsp;
 // pub mod buttons;
