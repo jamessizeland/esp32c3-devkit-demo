@@ -5,6 +5,7 @@
 //! The actor can be created with a spawner and a configuration.
 
 use actor_private::*;
+use ector::ActorContext;
 use embassy_executor::Spawner;
 use esp_hal::rmt;
 use esp_hal_smartled::SmartLedsAdapter;
@@ -12,7 +13,6 @@ use log::{error, info};
 use smart_leds::{RGB8, SmartLedsWrite, brightness, colors::BLACK};
 use {
     core::future::pending,
-    ector::*,
     embassy_executor::SpawnError,
     embassy_futures::select::{Either, select},
     embassy_time::{Duration, Timer},
@@ -63,13 +63,15 @@ pub struct Config {
 /// Create a new actor with a spawner and a configuration.
 /// This pattern could be made into a macro to simplify the actor creation.
 pub fn spawn_actor(spawner: Spawner, config: Config) -> Result<ActorInbox<Message>, SpawnError> {
-    static CONTEXT: ActorContext<LedActor> = ActorContext::new();
+    static CONTEXT: ActorContext<Actor> = ActorContext::new();
     let inbox = CONTEXT.address();
-    spawner.spawn(actor_task(&CONTEXT, LedActor::new(spawner, config, inbox)))?;
+    spawner.spawn(actor_task(&CONTEXT, Actor::new(spawner, config, inbox)))?;
     Ok(inbox)
 }
 
 mod actor_private {
+
+    use ector::{DynamicAddress, Inbox};
 
     use super::*;
     /// A scheduler to run a sequence of actions.
@@ -88,7 +90,7 @@ mod actor_private {
 
     /// The actor's private data, not to be shared with other actors.
     /// This is where the actor's state is stored.
-    pub(super) struct LedActor {
+    pub(super) struct Actor {
         /// A timer to schedule the next message
         scheduler: Option<Scheduler>,
         /// The LED to control
@@ -100,7 +102,7 @@ mod actor_private {
         brightness: u8,
     }
 
-    impl Actor for LedActor {
+    impl ector::Actor for Actor {
         type Message = Message;
 
         /// Actor pattern for either handling new incoming messages or running a scheduled action.
@@ -124,7 +126,7 @@ mod actor_private {
         }
     }
 
-    impl LedActor {
+    impl Actor {
         /// Create a new actor with a spawner and a configuration.
         pub(super) fn new(_: Spawner, config: Config, _: ActorInbox<Message>) -> Self {
             // Opportunity to do any setup before mounting the actor
@@ -189,7 +191,7 @@ mod actor_private {
 
     #[embassy_executor::task]
     /// The actor's task, to be spawned by the actor's context.
-    pub(super) async fn actor_task(context: &'static ActorContext<LedActor>, actor: LedActor) {
+    pub(super) async fn actor_task(context: &'static ActorContext<Actor>, actor: Actor) {
         context.mount(actor).await;
     }
 }
