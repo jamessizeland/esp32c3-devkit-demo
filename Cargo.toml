@@ -52,6 +52,8 @@ trouble-host = { git = "https://github.com/embassy-rs/trouble.git", features = [
   "log",
 ] }
 bt-hci = { version = "0.2.0", features = ["log"] }
+imu-fusion = "0.2.5"
+micromath = "2.1.0"
 
 
 [profile.dev]
