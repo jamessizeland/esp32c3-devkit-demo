@@ -35,11 +35,11 @@ use embassy_embedded_hal::shared_bus;
 use embassy_sync::blocking_mutex::{NoopMutex, raw::NoopRawMutex};
 use esp_hal::{
     clock::CpuClock,
-    gpio::{Input, Pull},
+    gpio::{Input, InputConfig, Pull},
     i2c::master::{Config, I2c},
     rmt::Rmt,
     rng::Rng,
-    time::RateExtU32,
+    time::Rate,
     timer::systimer::SystemTimer,
 };
 use esp_hal_smartled::{SmartLedsAdapter, smartLedBuffer};
@@ -75,12 +75,13 @@ impl Board {
     pub fn init() -> Self {
         let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
         let p = esp_hal::init(config);
-        esp_alloc::heap_allocator!(72 * 1024);
+        esp_alloc::heap_allocator!(size: 72 * 1024);
 
         info!("{} initialized!", esp_hal::chip!());
 
         let led = {
-            let rmt = Rmt::new(p.RMT, 80.MHz()).expect("Failed to initialize RMT0");
+            let frequency = Rate::from_mhz(80);
+            let rmt = Rmt::new(p.RMT, frequency).expect("Failed to initialize RMT0");
             SmartLedsAdapter::new(rmt.channel0, p.GPIO2, smartLedBuffer!(1))
         };
         info!("Initialized WS2812 LED");
@@ -114,12 +115,13 @@ impl Board {
             let connector = esp_wifi::ble::controller::BleConnector::new(init, bluetooth);
             ExternalController::new(connector)
         };
+        let pull_up = InputConfig::default().with_pull(Pull::Up);
         Self {
             led,
             rng,
             i2c_bus,
             ble_controller: controller,
-            button: Input::new(p.GPIO9, Pull::Up),
+            button: Input::new(p.GPIO9, pull_up),
         }
     }
 }
