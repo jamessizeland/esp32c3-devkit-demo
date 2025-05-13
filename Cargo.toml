@@ -5,14 +5,14 @@ version = "0.1.0"
 
 [dependencies]
 # HAL stuff
-esp-hal = { version = "0.23.1", features = ["unstable"] }
+esp-hal = { version = "^1.0.0-beta.0", features = ["unstable", "log"] }
 embedded-io = "0.6.1"
 embedded-io-async = "0.6.1"
 critical-section = "1.2.0"
 
 # Logging
 esp-println = { version = "0.13.1", features = ["log"] }
-log = { version = "0.4.21" }
+log = { version = "0.4.27" }
 esp-backtrace = { version = "0.15.1", features = [
   "exception-handler",
   "panic-handler",
@@ -27,7 +27,7 @@ ector = { version = "0.7.0", default-features = false }
 # Embassy stuff
 embassy-executor = { version = "0.7.0", features = ["task-arena-size-20480"] }
 embassy-time = { version = "0.4.0", features = ["generic-queue-8"] }
-esp-hal-embassy = { version = "0.6.0", features = [] }
+esp-hal-embassy = { version = "0.7.0", features = [] }
 embassy-embedded-hal = "0.3.0"
 embassy-sync = "0.6.0"
 embassy-futures = "0.1.1"
@@ -37,23 +37,24 @@ smart-leds = "0.4.0"
 esp-hal-smartled = { git = "https://github.com/esp-rs/esp-hal-community.git" }
 
 # I2c Peripherals
-icm42670 = "0.2.0"
-shtcx = "1.0.0"
+shtcx = "1.0.0"      # SHTC3 temperature and humidity sensor
+icm42670 = "0.2.0"   # ICM42670 IMU
+imu-fusion = "0.2.5"
+micromath = "2.1.0"
 
 # BLE stuff
-esp-alloc = { version = "0.6.0" }
-esp-wifi = { version = "0.12.0", default-features = false, features = [
+esp-alloc = { version = "0.7.0" }
+esp-wifi = { version = "0.13.0", default-features = false, features = [
   "ble",
   "esp-alloc",
+  "builtin-scheduler",
   "log",
 ] }
 trouble-host = { git = "https://github.com/embassy-rs/trouble.git", features = [
   "gatt",
   "log",
 ] }
-bt-hci = { version = "0.2.0", features = ["log"] }
-imu-fusion = "0.2.5"
-micromath = "2.1.0"
+bt-hci = { version = "0.3.1", features = ["log"] }
 
 
 [profile.dev]
