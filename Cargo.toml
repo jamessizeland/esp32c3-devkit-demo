@@ -50,11 +50,8 @@ esp-wifi = { version = "0.13.0", default-features = false, features = [
   "builtin-scheduler",
   "log",
 ] }
-trouble-host = { git = "https://github.com/embassy-rs/trouble.git", features = [
-  "gatt",
-  "log",
-] }
-bt-hci = { version = "0.3.1", features = ["log"] }
+trouble-host = { version = "0.1.0", features = ["gatt", "log"] }
+bt-hci = { version = "0.2.1", features = ["log"] }
 
 
 [profile.dev]

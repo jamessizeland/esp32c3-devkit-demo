@@ -15,7 +15,7 @@ use {
     embassy_time::{Duration, Timer},
 };
 
-use crate::{ActorInbox, bsp::I2cBus};
+use crate::{ActorInbox, ble::GattServer, bsp::I2cBus};
 
 /// The actor's message type, communicating the finite states of the actor.
 /// This is made available to other actors to interact with this one.
@@ -31,6 +31,7 @@ pub enum Message {
 /// The actor's configuration, to be shared with other actors to initialize this actor.
 pub struct Config {
     pub i2c_bus: &'static I2cBus<'static>,
+    pub ble: Option<&'static GattServer<'static>>,
 }
 
 /// Create a new actor with a spawner and a configuration.

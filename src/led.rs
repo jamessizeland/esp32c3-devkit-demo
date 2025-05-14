@@ -18,7 +18,7 @@ use {
     embassy_time::{Duration, Timer},
 };
 
-use crate::ActorInbox;
+use crate::{ActorInbox, ble::GattServer};
 
 pub type Led = SmartLedsAdapter<rmt::Channel<esp_hal::Blocking, 0>, 25>;
 
@@ -58,6 +58,7 @@ pub enum Message {
 /// The actor's configuration, to be shared with other actors to initialize this actor.
 pub struct Config {
     pub led: Led,
+    pub ble: Option<&'static GattServer<'static>>,
 }
 
 /// Create a new actor with a spawner and a configuration.

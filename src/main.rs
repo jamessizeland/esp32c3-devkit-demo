@@ -6,28 +6,55 @@ use embassy_time::{Duration, Timer};
 use esp_backtrace as _;
 use log::info;
 
-use esp32c3_devkit_demo::{bsp::Board, led::write};
-use smart_leds::colors::{BLACK, BLUE, GREEN, RED};
+use esp32c3_devkit_demo::{ambient, ble::GattServer, bsp::Board, led};
+use smart_leds::colors::{BLUE, GREEN, RED};
 
 #[esp_hal_embassy::main]
 async fn main(spawner: Spawner) -> ! {
     esp_println::logger::init_logger_from_env();
+    let name = "Esp devkit demo";
+    let board = Board::init();
 
-    let mut board = Board::init();
+    let (server, mut peripheral) = GattServer::start(name, spawner, board.ble_controller);
 
-    write(&mut board.led, BLUE, 50);
-    Timer::after_secs(1).await;
-    write(&mut board.led, RED, 50);
-    Timer::after_secs(1).await;
-    write(&mut board.led, GREEN, 50);
-    Timer::after_secs(1).await;
-    write(&mut board.led, BLACK, 50);
+    let led_actor = led::spawn_actor(
+        spawner,
+        led::Config {
+            led: board.led,
+            ble: Some(server),
+        },
+    )
+    .expect("failed to spawn led actor");
+    led_actor.send(led::Message::SetBrightness(50)).await;
+    let sequence = &[RED, GREEN, BLUE];
+    led_actor
+        .send(led::Message::SetSequence((
+            sequence,
+            Duration::from_secs(1),
+            led::Repeat::Forever,
+        )))
+        .await;
 
-    // TODO: Spawn some tasks
-    let _ = spawner;
+    let actor = ambient::spawn_actor(
+        spawner,
+        ambient::Config {
+            i2c_bus: board.i2c_bus,
+            ble: Some(server),
+        },
+    )
+    .expect("failed to spawn");
+
+    // Set the power mode to normal mode.
+    actor
+        .send(ambient::Message::SetPowerMode(shtcx::PowerMode::NormalMode))
+        .await;
+
+    Timer::after(Duration::from_secs(1)).await;
 
     loop {
         info!("Hello world!");
-        Timer::after(Duration::from_secs(1)).await;
+        if let Ok(conn) = GattServer::advertise("Esp32c3-devkit-demo", &mut peripheral).await {
+            // TODO
+        }
     }
 }
