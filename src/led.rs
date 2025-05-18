@@ -18,7 +18,7 @@ use {
     embassy_time::{Duration, Timer},
 };
 
-use crate::{ActorInbox, ble::GattServer};
+use crate::ActorInbox;
 
 pub type Led = SmartLedsAdapter<rmt::Channel<esp_hal::Blocking, 0>, 25>;
 
@@ -40,34 +40,45 @@ pub enum Repeat {
     Forever,
 }
 
-/// The actor's message type, communicating the finite states of the actor.
-/// This is made available to other actors to interact with this one.
-pub enum Message {
-    /// Set the colour of the LED
-    SetColour(RGB8),
-    /// Set the brightness of the LED
-    SetBrightness(u8),
-    /// Turn the LED off
-    Off,
-    /// Turn the LED on
-    On,
-    /// Set the LED to a sequence of colours
-    SetSequence((&'static [RGB8], Duration, Repeat)),
-}
+pub struct LedActor(ActorInbox<Message>);
 
-/// The actor's configuration, to be shared with other actors to initialize this actor.
-pub struct Config {
-    pub led: Led,
-    pub ble: Option<&'static GattServer<'static>>,
+impl LedActor {
+    /// Turn on the LED
+    pub async fn on(&self) {
+        self.0.send(Message::On).await;
+    }
+    /// Turn off the LED
+    pub async fn off(&self) {
+        self.0.send(Message::Off).await;
+    }
+    /// Set the colour of the LED
+    pub async fn set_colour(&self, colour: RGB8) {
+        self.0.send(Message::SetColour(colour)).await;
+    }
+    /// Set the brightness of the LED
+    pub async fn set_brightness(&self, level: u8) {
+        self.0.send(Message::SetBrightness(level)).await;
+    }
+    /// Set the LED to a sequence of colours
+    pub async fn set_sequence(
+        &self,
+        sequence: &'static [RGB8],
+        step_duration: Duration,
+        repeat: Repeat,
+    ) {
+        self.0
+            .send(Message::SetSequence((sequence, step_duration, repeat)))
+            .await;
+    }
 }
 
 /// Create a new actor with a spawner and a configuration.
 /// This pattern could be made into a macro to simplify the actor creation.
-pub fn spawn_actor(spawner: Spawner, config: Config) -> Result<ActorInbox<Message>, SpawnError> {
+pub fn spawn_actor(spawner: Spawner, led: Led) -> Result<LedActor, SpawnError> {
     static CONTEXT: ActorContext<Actor> = ActorContext::new();
     let inbox = CONTEXT.address();
-    spawner.spawn(actor_task(&CONTEXT, Actor::new(spawner, config, inbox)))?;
-    Ok(inbox)
+    spawner.spawn(actor_task(&CONTEXT, Actor::new(spawner, led, inbox)))?;
+    Ok(LedActor(inbox))
 }
 
 mod actor_private {
@@ -75,6 +86,20 @@ mod actor_private {
     use ector::{DynamicAddress, Inbox};
 
     use super::*;
+
+    /// The actor's message type, communicating the finite states of the actor.
+    pub(super) enum Message {
+        /// Set the colour of the LED
+        SetColour(RGB8),
+        /// Set the brightness of the LED
+        SetBrightness(u8),
+        /// Turn the LED off
+        Off,
+        /// Turn the LED on
+        On,
+        /// Set the LED to a sequence of colours
+        SetSequence((&'static [RGB8], Duration, Repeat)),
+    }
     /// A scheduler to run a sequence of actions.
     struct Scheduler {
         /// The timer to schedule the next action
@@ -129,12 +154,12 @@ mod actor_private {
 
     impl Actor {
         /// Create a new actor with a spawner and a configuration.
-        pub(super) fn new(_: Spawner, config: Config, _: ActorInbox<Message>) -> Self {
+        pub(super) fn new(_: Spawner, led: Led, _: ActorInbox<Message>) -> Self {
             // Opportunity to do any setup before mounting the actor
             // this could include spawning child actors or setting up resources
             // we have access to our own inbox here to send down to child actors.
             Self {
-                led: config.led,
+                led,
                 scheduler: None,
                 colour: RGB8 { r: 0, g: 0, b: 0 },
                 brightness: 50,
