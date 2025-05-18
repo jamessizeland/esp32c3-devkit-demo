@@ -21,10 +21,9 @@ async fn main(spawner: embassy_executor::Spawner) -> ! {
     let (server, mut peripheral) = GattServer::start(name, spawner, board.ble_controller);
 
     let led = led::spawn_actor(spawner, board.led).expect("failed to spawn led actor");
-    led.set_brightness(50).await;
+    led.set_brightness(50);
     let sequence = &[RED, GREEN, BLUE];
-    led.set_sequence(sequence, Duration::from_secs(1), Repeat::Forever)
-        .await;
+    led.set_sequence(sequence, Duration::from_secs(1), Repeat::Forever);
 
     Timer::after(Duration::from_secs(1)).await;
 

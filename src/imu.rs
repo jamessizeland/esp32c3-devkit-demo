@@ -6,6 +6,7 @@
 use actor_private::*;
 use ector::ActorContext;
 use embassy_executor::Spawner;
+use embassy_sync::channel::TrySendError;
 use gimbal::Gimbal;
 use icm42670::PowerMode;
 use log::info;
@@ -20,7 +21,7 @@ use crate::{ActorInbox, bsp::I2cBus};
 
 /// The actor's message type, communicating the finite states of the actor.
 /// This is made available to other actors to interact with this one.
-pub enum Message {
+enum Message {
     /// Set the power mode of the sensor
     SetPowerMode(PowerMode),
     /// Read the data from the sensor at a set period
@@ -29,17 +30,32 @@ pub enum Message {
     Stop,
 }
 
-/// The actor's configuration, to be shared with other actors to initialize this actor.
-pub struct Config {
-    pub i2c_bus: &'static I2cBus<'static>,
+pub struct ImuActor(ActorInbox<Message>);
+
+impl ImuActor {
+    /// Set the power mode of the sensor
+    pub fn set_power_mode(&self, power_mode: PowerMode) -> bool {
+        self.0.try_send(Message::SetPowerMode(power_mode)).is_ok()
+    }
+    /// Start reading the data from the sensor at a set period
+    pub fn start(&self, period: Duration) -> bool {
+        self.0.try_send(Message::Start(period)).is_ok()
+    }
+    /// Stop reading the data from the sensor
+    pub fn stop(&self) -> bool {
+        self.0.try_send(Message::Stop).is_ok()
+    }
 }
 
 /// Create a new actor with a spawner and a configuration.
-pub fn spawn_actor(spawner: Spawner, config: Config) -> Result<ActorInbox<Message>, SpawnError> {
+pub fn spawn_actor(
+    spawner: Spawner,
+    i2c_bus: &'static I2cBus<'static>,
+) -> Result<ImuActor, SpawnError> {
     static CONTEXT: ActorContext<Actor> = ActorContext::new();
     let inbox = CONTEXT.address();
-    spawner.spawn(actor_task(&CONTEXT, Actor::new(spawner, config, inbox)))?;
-    Ok(inbox)
+    spawner.spawn(actor_task(&CONTEXT, Actor::new(spawner, i2c_bus, inbox)))?;
+    Ok(ImuActor(inbox))
 }
 
 mod gimbal {
@@ -155,8 +171,12 @@ mod actor_private {
 
     impl Actor {
         /// Create a new actor with a spawner and a configuration.
-        pub(super) fn new(_: Spawner, config: Config, _: ActorInbox<Message>) -> Self {
-            let i2c = I2cDevice::new(config.i2c_bus);
+        pub(super) fn new(
+            _: Spawner,
+            i2c_bus: &'static I2cBus<'static>,
+            _: ActorInbox<Message>,
+        ) -> Self {
+            let i2c = I2cDevice::new(i2c_bus);
             let mut device =
                 Icm42670::new(i2c, Address::Primary).expect("Failed to initialize ICM42670");
             let power_mode = PowerMode::Standby;

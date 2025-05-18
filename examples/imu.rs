@@ -15,10 +15,7 @@ use esp_backtrace as _;
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
 
-use esp32c3_devkit_demo::{
-    bsp::Board,
-    imu::{self, Message},
-};
+use esp32c3_devkit_demo::{bsp::Board, imu};
 
 #[esp_hal_embassy::main]
 async fn main(spawner: Spawner) -> ! {
@@ -26,26 +23,19 @@ async fn main(spawner: Spawner) -> ! {
 
     let board = Board::init();
 
-    // For now we only have one element in the configuration.
-    // But we could add more elements to the configuration to pass to the actor.
-    let config = imu::Config {
-        i2c_bus: board.i2c_bus,
-    };
-    let actor = imu::spawn_actor(spawner, config).expect("failed to spawn");
+    let imu = imu::spawn_actor(spawner, board.i2c_bus).expect("failed to spawn");
 
     // Set the power mode to normal mode.
-    actor
-        .send(Message::SetPowerMode(icm42670::PowerMode::SixAxisLowNoise))
-        .await;
+    imu.set_power_mode(icm42670::PowerMode::SixAxisLowNoise);
 
     Timer::after_secs(1).await;
 
-    // Start the actor to read the sensor every 20 milliseconds.
-    actor.send(Message::Start(Duration::from_millis(20))).await;
+    // Start the imu to read the sensor every 20 milliseconds.
+    imu.start(Duration::from_millis(20));
 
-    // Stop the actor after 60 seconds.
+    // Stop the imu after 60 seconds.
     Timer::after_secs(60).await;
-    actor.send(Message::Stop).await;
+    imu.stop();
 
     pending().await
 }

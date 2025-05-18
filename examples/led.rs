@@ -33,15 +33,14 @@ async fn main(spawner: Spawner) -> ! {
     // Can also spawn an actor to control the LED asynchronously.
     // The actor inbox can be shared with other actors to send messages to this actor.
     let led = led::spawn_actor(spawner, board.led).expect("failed to spawn led actor");
-    led.set_brightness(50).await;
-    led.set_colour(YELLOW).await;
+    led.set_brightness(50);
+    led.set_colour(YELLOW);
     Timer::after_secs(1).await;
 
     // This sequence will run forever until the actor is dropped, or another message is sent.
     // It will run as a background task.
     let sequence = &[RED, GREEN, BLUE];
-    led.set_sequence(sequence, Duration::from_secs(1), Repeat::Forever)
-        .await;
+    led.set_sequence(sequence, Duration::from_secs(1), Repeat::Forever);
 
     pending().await
 }

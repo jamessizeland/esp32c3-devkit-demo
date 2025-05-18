@@ -44,31 +44,31 @@ pub struct LedActor(ActorInbox<Message>);
 
 impl LedActor {
     /// Turn on the LED
-    pub async fn on(&self) {
-        self.0.send(Message::On).await;
+    pub fn on(&self) -> bool {
+        self.0.try_send(Message::On).is_ok()
     }
     /// Turn off the LED
-    pub async fn off(&self) {
-        self.0.send(Message::Off).await;
+    pub fn off(&self) -> bool {
+        self.0.try_send(Message::Off).is_ok()
     }
     /// Set the colour of the LED
-    pub async fn set_colour(&self, colour: RGB8) {
-        self.0.send(Message::SetColour(colour)).await;
+    pub fn set_colour(&self, colour: RGB8) -> bool {
+        self.0.try_send(Message::SetColour(colour)).is_ok()
     }
     /// Set the brightness of the LED
-    pub async fn set_brightness(&self, level: u8) {
-        self.0.send(Message::SetBrightness(level)).await;
+    pub fn set_brightness(&self, level: u8) -> bool {
+        self.0.try_send(Message::SetBrightness(level)).is_ok()
     }
     /// Set the LED to a sequence of colours
-    pub async fn set_sequence(
+    pub fn set_sequence(
         &self,
         sequence: &'static [RGB8],
         step_duration: Duration,
         repeat: Repeat,
-    ) {
+    ) -> bool {
         self.0
-            .send(Message::SetSequence((sequence, step_duration, repeat)))
-            .await;
+            .try_send(Message::SetSequence((sequence, step_duration, repeat)))
+            .is_ok()
     }
 }
 

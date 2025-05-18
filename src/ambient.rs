@@ -17,7 +17,7 @@ pub struct AmbientSensor {
 }
 
 impl AmbientSensor {
-    /// Create a new actor with a spawner and a configuration.
+    /// Initialize the sensor.
     pub fn new(i2c_bus: &'static I2cBus<'static>) -> Self {
         let i2c = I2cDevice::new(i2c_bus);
         Self {
