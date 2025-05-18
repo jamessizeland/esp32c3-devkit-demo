@@ -2,6 +2,7 @@ use bt_hci::controller::ExternalController;
 use esp_wifi::ble::controller::BleConnector;
 pub use gatt::GattServer;
 use log::info;
+// use log::info;
 use static_cell::StaticCell;
 use trouble_host::prelude::*;
 
