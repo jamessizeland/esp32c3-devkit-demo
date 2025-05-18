@@ -35,20 +35,6 @@ async fn main(spawner: Spawner) -> ! {
         )))
         .await;
 
-    let actor = ambient::spawn_actor(
-        spawner,
-        ambient::Config {
-            i2c_bus: board.i2c_bus,
-            ble: Some(server),
-        },
-    )
-    .expect("failed to spawn");
-
-    // Set the power mode to normal mode.
-    actor
-        .send(ambient::Message::SetPowerMode(shtcx::PowerMode::NormalMode))
-        .await;
-
     Timer::after(Duration::from_secs(1)).await;
 
     loop {
