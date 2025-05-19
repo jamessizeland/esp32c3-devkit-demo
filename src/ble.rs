@@ -1,12 +1,13 @@
 use bt_hci::controller::ExternalController;
 use esp_wifi::ble::controller::BleConnector;
 pub use gatt::GattServer;
-use log::info;
+use log::{info, warn};
 // use log::info;
 use static_cell::StaticCell;
 use trouble_host::prelude::*;
 
 mod gatt;
+mod notify;
 
 /// Max number of connections
 const CONNECTIONS_MAX: usize = 1;
@@ -18,22 +19,30 @@ const L2CAP_CHANNELS_MAX: usize = 2; // Signal + att
 const L2CAP_MTU: usize = 256;
 
 const SLOTS: usize = 20;
+
 pub type BleController = ExternalController<BleConnector<'static>, SLOTS>;
 
-pub type BleResources = HostResources<CONNECTIONS_MAX, L2CAP_CHANNELS_MAX, L2CAP_MTU>;
+type BleResources = HostResources<CONNECTIONS_MAX, L2CAP_CHANNELS_MAX, L2CAP_MTU>;
+
+/// Helper type that combines the long lived server struct with the more ephemeral current connection.
+pub type BleConnection<'stack, 'server, 'conn> = (
+    &'server GattServer<'stack>,
+    &'conn GattConnection<'stack, 'server>,
+);
 
 #[embassy_executor::task]
 async fn ble_task(mut runner: Runner<'static, BleController>) {
     runner.run().await.expect("Error in BLE task");
 }
 
-impl<'d> GattServer<'d> {
+impl<'values> GattServer<'values> {
     /// Build the stack for the GATT server and start background tasks required.
     pub fn start(
-        name: &'d str,
+        name: &'values str,
+        appearance: impl Into<&'static BluetoothUuid16>,
         spawner: embassy_executor::Spawner,
         controller: BleController,
-    ) -> (&'static Self, Peripheral<'d, BleController>) {
+    ) -> (&'static Self, Peripheral<'values, BleController>) {
         let address = Address::random([0x42, 0x5A, 0xE3, 0x1E, 0x83, 0xE7]);
         info!("Our address = {:?}", address);
 
@@ -51,7 +60,7 @@ impl<'d> GattServer<'d> {
             SERVER.init(
                 GattServer::new_with_config(GapConfig::Peripheral(PeripheralConfig {
                     name,
-                    appearance: &appearance::human_interface_device::GAMEPAD,
+                    appearance: appearance.into(),
                 }))
                 .expect("Error creating Gatt Server"),
             )
@@ -62,10 +71,11 @@ impl<'d> GattServer<'d> {
     }
 
     /// Create an advertiser to use to connect to a BLE Central, and wait for it to connect.
-    pub async fn advertise<'a, C: Controller>(
-        name: &'a str,
-        peripheral: &mut Peripheral<'a, C>,
-    ) -> Result<Connection<'a>, BleHostError<C::Error>> {
+    pub async fn advertise<'server, C: Controller>(
+        &'server self,
+        name: &'values str,
+        peripheral: &mut Peripheral<'values, C>,
+    ) -> Result<GattConnection<'values, 'server>, BleHostError<C::Error>> {
         let mut advertiser_data = [0; 31];
         AdStructure::encode_slice(
             &[
@@ -85,8 +95,40 @@ impl<'d> GattServer<'d> {
             )
             .await?;
         info!("[adv] advertising");
-        let conn = advertiser.accept().await?;
+        let conn = advertiser.accept().await?.with_attribute_server(self)?;
         info!("[adv] connection established");
         Ok(conn)
+    }
+
+    /// Background task to process BLE IO events.
+    pub async fn start_task<'server>(
+        &self,
+        conn: &GattConnection<'values, 'server>,
+    ) -> Result<(), trouble_host::Error> {
+        let reason = loop {
+            match conn.next().await {
+                GattConnectionEvent::Disconnected { reason } => break reason,
+                GattConnectionEvent::Gatt { event: Err(e) } => {
+                    warn!("[gatt] error processing event: {:?}", e)
+                }
+                GattConnectionEvent::Gatt { event: Ok(event) } => {
+                    match &event {
+                        GattEvent::Read(_event) => {
+                            info!("[gatt] Unhandled Read event occured");
+                        }
+                        GattEvent::Write(_event) => {
+                            info!("[gatt] Unhandled Write event occured");
+                        }
+                    }
+                    match event.accept() {
+                        Ok(reply) => reply.send().await,
+                        Err(e) => warn!("[gatt] error sending response: {:?}", e),
+                    }
+                }
+                _ => {} // ignore other events
+            }
+        };
+        info!("[gatt] disconnected: {:?}", reason);
+        Ok(())
     }
 }

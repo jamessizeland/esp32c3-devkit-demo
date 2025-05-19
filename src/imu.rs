@@ -1,61 +1,125 @@
-//! A simple actor to read from the 6-axis IMU.
+//! A simple struct to read from the 6-axis IMU.
 //!
-//! This actor can be used to read from the onboard IMU sensor.
+//! This can be used to read from the onboard IMU sensor.
 //! at a set rate or on demand.
 
-use actor_private::*;
-use ector::ActorContext;
-use embassy_executor::Spawner;
-use embassy_sync::channel::TrySendError;
+use embassy_embedded_hal::shared_bus::I2cDeviceError;
+use embassy_embedded_hal::shared_bus::blocking::i2c::I2cDevice;
+use embassy_time::{Duration, Instant, Timer};
+use esp_hal::i2c::master::Error as I2cError;
 use gimbal::Gimbal;
-use icm42670::PowerMode;
+use icm42670::accelerometer::Error as AccelError;
+use icm42670::accelerometer::vector::F32x3;
+use icm42670::{Address, prelude::*};
+use icm42670::{Icm42670, PowerMode};
 use log::info;
-use {
-    core::future::pending,
-    embassy_executor::SpawnError,
-    embassy_futures::select::{Either, select},
-    embassy_time::{Duration, Timer},
-};
 
-use crate::{ActorInbox, bsp::I2cBus};
+use crate::ble::BleConnection;
+use crate::bsp::{I2cBus, I2cBusDevice};
 
-/// The actor's message type, communicating the finite states of the actor.
-/// This is made available to other actors to interact with this one.
-enum Message {
-    /// Set the power mode of the sensor
-    SetPowerMode(PowerMode),
-    /// Read the data from the sensor at a set period
-    Start(Duration),
-    /// Stop reading the data from the sensor
-    Stop,
+pub struct ImuSensor {
+    /// The Onboard gyroscope and accelerometer.
+    device: Icm42670<I2cBusDevice<'static>>,
+    /// The gimbal to calculate inclination
+    gimbal: Option<Gimbal>,
+    /// The power mode of the sensor
+    power_mode: PowerMode,
 }
 
-pub struct ImuActor(ActorInbox<Message>);
+pub struct Measurement {
+    /// 3 axis acceleration
+    pub accel: F32x3,
+    /// 3 axis gyroscope
+    pub gyro: F32x3,
+    /// 3 axis inclination
+    pub inclination: Option<F32x3>,
+}
 
-impl ImuActor {
-    /// Set the power mode of the sensor
-    pub fn set_power_mode(&self, power_mode: PowerMode) -> bool {
-        self.0.try_send(Message::SetPowerMode(power_mode)).is_ok()
+impl ImuSensor {
+    /// Create a new actor with a spawner and a configuration.
+    pub fn new(i2c_bus: &'static I2cBus<'static>) -> Self {
+        let i2c = I2cDevice::new(i2c_bus);
+        let mut device =
+            Icm42670::new(i2c, Address::Primary).expect("Failed to initialize ICM42670");
+        let power_mode = PowerMode::Standby;
+        device
+            .set_power_mode(power_mode)
+            .expect("Failed to set power mode");
+        info!("Sample rate is: {:?}", device.sample_rate());
+        device.soft_reset().expect("Failed to reset device");
+        Self {
+            gimbal: None,
+            device,
+            power_mode,
+        }
     }
-    /// Start reading the data from the sensor at a set period
-    pub fn start(&self, period: Duration) -> bool {
-        self.0.try_send(Message::Start(period)).is_ok()
+    /// Set the power mode of the sensor.
+    pub fn set_power_mode(
+        &mut self,
+        power_mode: PowerMode,
+    ) -> Result<(), icm42670::Error<I2cDeviceError<I2cError>>> {
+        self.power_mode = power_mode;
+        self.device.set_power_mode(power_mode)
     }
-    /// Stop reading the data from the sensor
-    pub fn stop(&self) -> bool {
-        self.0.try_send(Message::Stop).is_ok()
+    /// Start reading the sensor at a given period.
+    ///
+    /// Optionally Notify the BLE client with the latest measurement.
+    pub async fn start_task(
+        &mut self,
+        period: Duration,
+        ble: Option<BleConnection<'_, '_, '_>>,
+    ) -> Result<(), AccelError<icm42670::Error<I2cDeviceError<I2cError>>>> {
+        self.read_inner(period, ble).await
+    }
+
+    /// Read the accelerometer and gyroscope from the sensor.
+    ///
+    /// Calculate the inclination if a gymbal has been set up.
+    pub async fn read_measurement(
+        &mut self,
+    ) -> Result<Measurement, AccelError<icm42670::Error<I2cDeviceError<I2cError>>>> {
+        let accel = self.device.accel_norm()?;
+        let gyro = self.device.gyro_norm()?;
+        let inclination = self.gimbal.as_mut().map(|g| g.read(gyro, accel));
+        Ok(Measurement {
+            accel,
+            gyro,
+            inclination,
+        })
     }
 }
 
-/// Create a new actor with a spawner and a configuration.
-pub fn spawn_actor(
-    spawner: Spawner,
-    i2c_bus: &'static I2cBus<'static>,
-) -> Result<ImuActor, SpawnError> {
-    static CONTEXT: ActorContext<Actor> = ActorContext::new();
-    let inbox = CONTEXT.address();
-    spawner.spawn(actor_task(&CONTEXT, Actor::new(spawner, i2c_bus, inbox)))?;
-    Ok(ImuActor(inbox))
+impl ImuSensor {
+    /// Start reading the sensor at a given period.
+    async fn read_inner(
+        &mut self,
+        period: Duration,
+        ble: Option<BleConnection<'_, '_, '_>>,
+    ) -> Result<(), AccelError<icm42670::Error<I2cDeviceError<I2cError>>>> {
+        self.gimbal = Some(Gimbal::new(period));
+        info!(
+            "Starting measurement every {:?} milliseconds",
+            period.as_millis()
+        );
+        let max_rate = self.device.sample_rate()?;
+
+        let read_time = Duration::from_secs(1) / max_rate as u32;
+        assert!(period > read_time, "Period must be greater than read time");
+        loop {
+            let now = Instant::now();
+            let meas = self.read_measurement().await?;
+            if let Some((server, conn)) = ble {
+                if let Err(error) = server.notify_imu(&conn, meas).await {
+                    log::error!("Error notifying BLE: {:?}", error);
+                }
+            } else {
+                log::info!("Gyro: {:?}", meas.gyro);
+                log::info!("Accel: {:?}", meas.accel);
+                log::info!("Inclination: {:?}", meas.inclination);
+            }
+            Timer::after(period - now.elapsed()).await;
+        }
+    }
 }
 
 mod gimbal {
@@ -109,157 +173,5 @@ mod gimbal {
                 z: w.powi(2) - x.powi(2) - y.powi(2) + z.powi(2),
             }
         }
-    }
-}
-
-mod actor_private {
-
-    use ector::{DynamicAddress, Inbox};
-    use embassy_embedded_hal::shared_bus::blocking::i2c::I2cDevice;
-    use embassy_time::Instant;
-    use icm42670::{Address, Icm42670, prelude::*};
-
-    use crate::bsp::I2cBusDevice;
-
-    use super::*;
-    /// A scheduler to run a sequence of actions.
-    struct Scheduler {
-        /// The timer to schedule the next action
-        timer: Timer,
-        /// The period between actions
-        period: Duration,
-    }
-
-    /// The actor's private data, not to be shared with other actors.
-    /// This is where the actor's state is stored.
-    pub(super) struct Actor {
-        /// A timer to schedule the next message
-        scheduler: Option<Scheduler>,
-        /// The Onboard temperature and humidity sensor
-        device: Icm42670<I2cBusDevice<'static>>,
-        /// The current power mode of the sensor
-        power_mode: PowerMode,
-        /// The gimbal to calculate the inclination
-        gimbal: Option<Gimbal>,
-        /// Error state
-        error: bool,
-    }
-
-    impl ector::Actor for Actor {
-        type Message = Message;
-
-        /// Actor pattern for either handling new incoming messages or running a scheduled action.
-        async fn on_mount<M>(&mut self, _: DynamicAddress<Message>, mut inbox: M) -> !
-        where
-            M: Inbox<Self::Message>,
-        {
-            info!("Ambient Task started!");
-            loop {
-                let deadline = async {
-                    match self.scheduler.as_mut() {
-                        Some(Scheduler { timer, .. }) => timer.await,
-                        None => pending().await,
-                    }
-                };
-                match select(inbox.next(), deadline).await {
-                    Either::First(action) => self.act(action).await,
-                    Either::Second(_) => self.next().await,
-                }
-            }
-        }
-    }
-
-    impl Actor {
-        /// Create a new actor with a spawner and a configuration.
-        pub(super) fn new(
-            _: Spawner,
-            i2c_bus: &'static I2cBus<'static>,
-            _: ActorInbox<Message>,
-        ) -> Self {
-            let i2c = I2cDevice::new(i2c_bus);
-            let mut device =
-                Icm42670::new(i2c, Address::Primary).expect("Failed to initialize ICM42670");
-            let power_mode = PowerMode::Standby;
-            device
-                .set_power_mode(power_mode)
-                .expect("Failed to set power mode");
-            info!("Sample rate is: {:?}", device.sample_rate());
-            device.soft_reset().expect("Failed to reset device");
-            Self {
-                scheduler: None,
-                gimbal: None,
-                device,
-                power_mode,
-                error: false,
-            }
-        }
-        /// The message handler
-        async fn act(&mut self, msg: Message) {
-            match msg {
-                Message::SetPowerMode(power_mode) => {
-                    self.power_mode = power_mode;
-                    if self.device.set_power_mode(power_mode).is_err() {
-                        log::error!("Failed to set power mode");
-                        self.error = true;
-                        return;
-                    };
-                    info!("Power mode set to {:?}", power_mode);
-                }
-                Message::Start(period) => {
-                    self.gimbal = Some(Gimbal::new(period));
-                    info!("Starting measurement every {:?} seconds", period.as_secs());
-                    let Ok(max_rate) = self.device.sample_rate() else {
-                        log::error!("Failed to get sample rate");
-                        self.error = true;
-                        return;
-                    };
-                    let read_time = Duration::from_secs(1) / max_rate as u32;
-                    assert!(period > read_time, "Period must be greater than read time");
-                    self.scheduler = Some(Scheduler {
-                        timer: Timer::after(period),
-                        period,
-                    });
-                    self.next().await;
-                }
-                Message::Stop => {
-                    info!("Stopping measurement");
-                    self.scheduler = None
-                }
-            }
-        }
-        /// Run the next scheduled action.
-        async fn next(&mut self) {
-            let Some(scheduler) = self.scheduler.take() else {
-                return; // no scheduled action
-            };
-            let now = Instant::now();
-            let period = scheduler.period;
-            self.read_measurement().await;
-            self.scheduler = Some(Scheduler {
-                timer: Timer::after(period - now.elapsed()),
-                period,
-            });
-        }
-
-        /// Read the temperature and humidity from the sensor
-        async fn read_measurement(&mut self) {
-            match (self.device.accel_norm(), self.device.gyro_norm()) {
-                (Ok(accel), Ok(gyro)) => {
-                    let inclination = self.gimbal.as_mut().map(|g| g.read(gyro, accel));
-                    log::info!("Gyro: {:?}", gyro);
-                    log::info!("Accel: {:?}", accel);
-                    log::info!("Inclination: {:?}", inclination);
-                }
-                _ => {
-                    log::error!("Failed to read measurement");
-                }
-            }
-        }
-    }
-
-    #[embassy_executor::task]
-    /// The actor's task, to be spawned by the actor's context.
-    pub(super) async fn actor_task(context: &'static ActorContext<Actor>, actor: Actor) {
-        context.mount(actor).await;
     }
 }

@@ -12,3 +12,6 @@ pub mod led;
 
 /// Alias for the actor's inbox
 pub type ActorInbox<M> = Sender<'static, NoopRawMutex, M, 1>;
+
+#[derive(Debug, Copy, Clone)]
+pub enum AppError {}

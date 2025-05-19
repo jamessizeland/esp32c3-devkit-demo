@@ -15,27 +15,24 @@ use esp_backtrace as _;
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
 
-use esp32c3_devkit_demo::{bsp::Board, imu};
+use esp32c3_devkit_demo::{bsp::Board, imu::ImuSensor};
 
 #[esp_hal_embassy::main]
-async fn main(spawner: Spawner) -> ! {
+async fn main(_spawner: Spawner) -> ! {
     esp_println::logger::init_logger_from_env();
 
     let board = Board::init();
 
-    let imu = imu::spawn_actor(spawner, board.i2c_bus).expect("failed to spawn");
+    let mut imu = ImuSensor::new(board.i2c_bus);
 
     // Set the power mode to normal mode.
-    imu.set_power_mode(icm42670::PowerMode::SixAxisLowNoise);
+    imu.set_power_mode(icm42670::PowerMode::SixAxisLowNoise)
+        .unwrap();
 
     Timer::after_secs(1).await;
 
     // Start the imu to read the sensor every 20 milliseconds.
-    imu.start(Duration::from_millis(20));
-
-    // Stop the imu after 60 seconds.
-    Timer::after_secs(60).await;
-    imu.stop();
+    imu.read(Duration::from_millis(20), None).await;
 
     pending().await
 }

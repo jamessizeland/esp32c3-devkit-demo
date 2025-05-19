@@ -100,6 +100,7 @@ mod actor_private {
         /// Set the LED to a sequence of colours
         SetSequence((&'static [RGB8], Duration, Repeat)),
     }
+
     /// A scheduler to run a sequence of actions.
     struct Scheduler {
         /// The timer to schedule the next action

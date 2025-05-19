@@ -25,16 +25,16 @@ async fn main(_spawner: Spawner) {
 
     let mut ambient = AmbientSensor::new(board.i2c_bus);
 
+    // select(
+    //     // read the sensor every 2 seconds
+    //     ambient.read(Duration::from_secs(1), Duration::from_secs(5), None),
+    //     // for 10 seconds
+    //     Timer::after(Duration::from_secs(60)),
+    // )
+    // .await;
     select(
         // read the sensor every 2 seconds
-        ambient.read(Duration::from_secs(2), None),
-        // for 10 seconds
-        Timer::after(Duration::from_secs(10)),
-    )
-    .await;
-    select(
-        // read the sensor every 2 seconds
-        ambient.read_low_power(Duration::from_secs(2), None),
+        ambient.read_low_power(Duration::from_millis(800), Duration::from_millis(800), None),
         // for 10 seconds
         Timer::after(Duration::from_secs(10)),
     )
