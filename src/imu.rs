@@ -109,7 +109,7 @@ impl ImuSensor {
             let now = Instant::now();
             let meas = self.read_measurement().await?;
             if let Some((server, conn)) = ble {
-                if let Err(error) = server.notify_imu(&conn, meas).await {
+                if let Err(error) = server.notify_imu(conn, meas).await {
                     log::error!("Error notifying BLE: {:?}", error);
                 }
             } else {

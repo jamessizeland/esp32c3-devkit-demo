@@ -39,7 +39,7 @@ async fn main(spawner: embassy_executor::Spawner) -> ! {
     loop {
         info!("Advertising for BLE Connection...");
         led.set_sequence(sequence, Duration::from_secs(1), Repeat::Forever);
-        let adv = advertise("Esp32c3-devkit-rust", &mut peripheral, &server);
+        let adv = advertise("Esp32c3-devkit-rust", &mut peripheral, server);
         if let Ok(conn) = adv.await {
             let ble = (server, &conn);
             led.off();
