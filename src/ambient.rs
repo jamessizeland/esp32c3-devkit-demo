@@ -57,7 +57,7 @@ impl AmbientSensor {
     pub async fn start_task(
         &mut self,
         period: Duration,
-        ble: Option<BleConnection<'_, '_, '_>>,
+        ble: Option<BleConnection<'_, '_>>,
     ) -> Result<(), shtcx::Error<I2cDeviceError<Error>>> {
         assert!(
             period >= self.read_time,

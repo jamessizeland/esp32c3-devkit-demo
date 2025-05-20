@@ -40,7 +40,7 @@ use esp_hal::{
     time::Rate,
     timer::systimer::SystemTimer,
 };
-use esp_hal_smartled::{SmartLedsAdapter, smartLedBuffer};
+use esp_hal_smartled::{SmartLedsAdapterAsync, buffer_size_async};
 
 use esp_wifi::EspWifiController;
 use log::info;
@@ -77,8 +77,10 @@ impl Board {
 
         let led = {
             let frequency = Rate::from_mhz(80);
-            let rmt = Rmt::new(p.RMT, frequency).expect("Failed to initialize RMT0");
-            SmartLedsAdapter::new(rmt.channel0, p.GPIO2, smartLedBuffer!(1))
+            let rmt = Rmt::new(p.RMT, frequency)
+                .expect("Failed to initialize RMT0")
+                .into_async();
+            SmartLedsAdapterAsync::new(rmt.channel0, p.GPIO2, [0; buffer_size_async(1)])
         };
         info!("Initialized WS2812 LED");
 

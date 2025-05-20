@@ -5,7 +5,7 @@ use embassy_futures::select::select3;
 use embassy_time::{Duration, Timer};
 use esp32c3_devkit_demo::{
     ambient::AmbientSensor,
-    ble::GattServer,
+    ble::{GattServer, advertise},
     bsp::Board,
     imu::ImuSensor,
     led::{self, Repeat},
@@ -22,7 +22,7 @@ use esp_backtrace as _;
 async fn main(spawner: embassy_executor::Spawner) -> ! {
     esp_println::logger::init_logger_from_env();
     let name = "Esp devkit demo";
-    let appearance = &appearance::human_interface_device::GAMEPAD;
+    let appearance = &appearance::sensor::MULTISENSOR;
     let board = Board::init();
 
     let (server, mut peripheral) =
@@ -39,21 +39,18 @@ async fn main(spawner: embassy_executor::Spawner) -> ! {
     loop {
         info!("Advertising for BLE Connection...");
         led.set_sequence(sequence, Duration::from_secs(1), Repeat::Forever);
-        let Ok(conn) = server
-            .advertise("Esp32c3-devkit-demo", &mut peripheral)
-            .await
-        else {
-            continue;
-        };
-        led.off();
-        let ble = (server, &conn);
-        imu.set_power_mode(ImuMode::SixAxisLowNoise)
-            .expect("sensor available");
-        ambient.set_power_mode(AmbMode::LowPower, Duration::from_millis(100));
+        let adv = advertise("Esp32c3-devkit-rust", &mut peripheral, &server);
+        if let Ok(conn) = adv.await {
+            let ble = (server, &conn);
+            led.off();
+            imu.set_power_mode(ImuMode::SixAxisLowNoise)
+                .expect("sensor available");
+            ambient.set_power_mode(AmbMode::LowPower, Duration::from_millis(100));
 
-        let imu_task = imu.start_task(Duration::from_hz(20), Some(ble));
-        let amb_task = ambient.start_task(Duration::from_hz(1), Some(ble));
-        let gatt_task = server.start_task(&conn);
-        select3(imu_task, amb_task, gatt_task).await;
+            let imu_task = imu.start_task(Duration::from_hz(20), Some(ble));
+            let amb_task = ambient.start_task(Duration::from_hz(1), Some(ble));
+            let gatt_task = server.start_task(&conn);
+            select3(imu_task, amb_task, gatt_task).await;
+        }
     }
 }

@@ -67,7 +67,7 @@ impl ImuSensor {
     pub async fn start_task(
         &mut self,
         period: Duration,
-        ble: Option<BleConnection<'_, '_, '_>>,
+        ble: Option<BleConnection<'_, '_>>,
     ) -> Result<(), AccelError<icm42670::Error<I2cDeviceError<I2cError>>>> {
         self.read_inner(period, ble).await
     }
@@ -94,7 +94,7 @@ impl ImuSensor {
     async fn read_inner(
         &mut self,
         period: Duration,
-        ble: Option<BleConnection<'_, '_, '_>>,
+        ble: Option<BleConnection<'_, '_>>,
     ) -> Result<(), AccelError<icm42670::Error<I2cDeviceError<I2cError>>>> {
         self.gimbal = Some(Gimbal::new(period));
         info!(

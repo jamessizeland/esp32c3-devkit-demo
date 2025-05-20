@@ -8,9 +8,9 @@ use actor_private::*;
 use ector::ActorContext;
 use embassy_executor::Spawner;
 use esp_hal::rmt;
-use esp_hal_smartled::SmartLedsAdapter;
+use esp_hal_smartled::SmartLedsAdapterAsync;
 use log::{error, info};
-use smart_leds::{RGB8, SmartLedsWrite, brightness, colors::BLACK};
+use smart_leds::{RGB8, SmartLedsWriteAsync, brightness, colors::BLACK, gamma};
 use {
     core::future::pending,
     embassy_executor::SpawnError,
@@ -20,11 +20,14 @@ use {
 
 use crate::ActorInbox;
 
-pub type Led = SmartLedsAdapter<rmt::Channel<esp_hal::Blocking, 0>, 25>;
+pub type Led = SmartLedsAdapterAsync<rmt::Channel<esp_hal::Async, 0>, 25>;
 
 /// Set the colour and brightness of the specified LED.
-pub fn write(led: &mut Led, colour: RGB8, level: u8) {
-    if let Err(err) = led.write(brightness([colour].into_iter(), level)) {
+pub async fn write(led: &mut Led, colour: RGB8, level: u8) {
+    if let Err(err) = led
+        .write(brightness(gamma([colour].into_iter()), level))
+        .await
+    {
         error!("Failed to write to LED: {:?}", err);
     };
 }
@@ -172,14 +175,14 @@ mod actor_private {
             match msg {
                 Message::SetColour(colour) => {
                     self.colour = colour;
-                    write(&mut self.led, colour, self.brightness)
+                    write(&mut self.led, colour, self.brightness).await
                 }
                 Message::SetBrightness(level) => {
                     self.brightness = level;
-                    write(&mut self.led, self.colour, level)
+                    write(&mut self.led, self.colour, level).await
                 }
-                Message::Off => write(&mut self.led, BLACK, 0),
-                Message::On => write(&mut self.led, self.colour, self.brightness),
+                Message::Off => write(&mut self.led, BLACK, 0).await,
+                Message::On => write(&mut self.led, self.colour, self.brightness).await,
                 Message::SetSequence((sequence, period, repeat)) => {
                     self.scheduler = Some(Scheduler {
                         timer: Timer::after(period),
@@ -200,7 +203,7 @@ mod actor_private {
             // run the next action in the sequence.
             match scheduler.sequence.get(scheduler.index) {
                 Some(&colour) => {
-                    write(&mut self.led, colour, self.brightness);
+                    write(&mut self.led, colour, self.brightness).await;
                     scheduler.index += 1;
                 }
                 None => {
