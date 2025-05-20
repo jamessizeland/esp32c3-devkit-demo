@@ -29,8 +29,6 @@
 //! | Button/Boot | GPIO9 |
 
 use core::cell::RefCell;
-
-use bt_hci::controller::ExternalController;
 use embassy_embedded_hal::shared_bus;
 use embassy_sync::blocking_mutex::{NoopMutex, raw::NoopRawMutex};
 use esp_hal::{
@@ -42,19 +40,17 @@ use esp_hal::{
     time::Rate,
     timer::systimer::SystemTimer,
 };
-use esp_hal_smartled::{SmartLedsAdapter, smartLedBuffer};
-use esp_wifi::{EspWifiController, ble::controller::BleConnector};
+use esp_hal_smartled::{SmartLedsAdapterAsync, buffer_size_async};
+
+use esp_wifi::EspWifiController;
 use log::info;
 use static_cell::StaticCell;
 
-use crate::led::Led;
+use crate::{ble::BleController, led::Led};
 
 pub type I2cType<'a> = I2c<'a, esp_hal::Async>;
 pub type I2cBus<'a> = NoopMutex<RefCell<I2cType<'a>>>;
 pub type I2cBusDevice<'a> = shared_bus::blocking::i2c::I2cDevice<'a, NoopRawMutex, I2cType<'a>>;
-
-const SLOTS: usize = 20;
-pub type BleController = ExternalController<BleConnector<'static>, SLOTS>;
 
 /// Board-specific peripherals.
 pub struct Board {
@@ -81,8 +77,10 @@ impl Board {
 
         let led = {
             let frequency = Rate::from_mhz(80);
-            let rmt = Rmt::new(p.RMT, frequency).expect("Failed to initialize RMT0");
-            SmartLedsAdapter::new(rmt.channel0, p.GPIO2, smartLedBuffer!(1))
+            let rmt = Rmt::new(p.RMT, frequency)
+                .expect("Failed to initialize RMT0")
+                .into_async();
+            SmartLedsAdapterAsync::new(rmt.channel0, p.GPIO2, [0; buffer_size_async(1)])
         };
         info!("Initialized WS2812 LED");
 
@@ -111,9 +109,9 @@ impl Board {
                 esp_wifi::init(timg0.timer0, rng, p.RADIO_CLK)
                     .expect("Failed to initialize BLE controller"),
             );
-            let bluetooth = p.BT;
-            let connector = esp_wifi::ble::controller::BleConnector::new(init, bluetooth);
-            ExternalController::new(connector)
+            let device = p.BT;
+            let transport = esp_wifi::ble::controller::BleConnector::new(init, device);
+            bt_hci::controller::ExternalController::new(transport)
         };
         let pull_up = InputConfig::default().with_pull(Pull::Up);
         Self {

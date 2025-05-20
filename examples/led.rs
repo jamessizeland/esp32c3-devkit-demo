@@ -13,11 +13,11 @@ use esp_backtrace as _;
 
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
-use smart_leds::colors::{BLUE, GREEN, RED};
+use smart_leds::colors::{BLUE, GREEN, RED, YELLOW};
 
 use esp32c3_devkit_demo::{
     bsp::Board,
-    led::{self, Message, Repeat},
+    led::{self, Repeat},
 };
 
 #[esp_hal_embassy::main]
@@ -32,22 +32,15 @@ async fn main(spawner: Spawner) -> ! {
 
     // Can also spawn an actor to control the LED asynchronously.
     // The actor inbox can be shared with other actors to send messages to this actor.
-    let led_actor = led::spawn_actor(spawner, led::Config { led: board.led })
-        .expect("failed to spawn led actor");
-    led_actor.send(Message::SetBrightness(50)).await;
-    led_actor.send(Message::SetColour(RED)).await;
+    let led = led::spawn_actor(spawner, board.led).expect("failed to spawn led actor");
+    led.set_brightness(50);
+    led.set_colour(YELLOW);
     Timer::after_secs(1).await;
 
     // This sequence will run forever until the actor is dropped, or another message is sent.
     // It will run as a background task.
     let sequence = &[RED, GREEN, BLUE];
-    led_actor
-        .send(Message::SetSequence((
-            sequence,
-            Duration::from_secs(1),
-            Repeat::Forever,
-        )))
-        .await;
+    led.set_sequence(sequence, Duration::from_secs(1), Repeat::Forever);
 
     pending().await
 }

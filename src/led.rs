@@ -8,9 +8,9 @@ use actor_private::*;
 use ector::ActorContext;
 use embassy_executor::Spawner;
 use esp_hal::rmt;
-use esp_hal_smartled::SmartLedsAdapter;
+use esp_hal_smartled::SmartLedsAdapterAsync;
 use log::{error, info};
-use smart_leds::{RGB8, SmartLedsWrite, brightness, colors::BLACK};
+use smart_leds::{RGB8, SmartLedsWriteAsync, brightness, colors::BLACK, gamma};
 use {
     core::future::pending,
     embassy_executor::SpawnError,
@@ -20,11 +20,14 @@ use {
 
 use crate::ActorInbox;
 
-pub type Led = SmartLedsAdapter<rmt::Channel<esp_hal::Blocking, 0>, 25>;
+pub type Led = SmartLedsAdapterAsync<rmt::Channel<esp_hal::Async, 0>, 25>;
 
 /// Set the colour and brightness of the specified LED.
-pub fn write(led: &mut Led, colour: RGB8, level: u8) {
-    if let Err(err) = led.write(brightness([colour].into_iter(), level)) {
+pub async fn write(led: &mut Led, colour: RGB8, level: u8) {
+    if let Err(err) = led
+        .write(brightness(gamma([colour].into_iter()), level))
+        .await
+    {
         error!("Failed to write to LED: {:?}", err);
     };
 }
@@ -40,33 +43,45 @@ pub enum Repeat {
     Forever,
 }
 
-/// The actor's message type, communicating the finite states of the actor.
-/// This is made available to other actors to interact with this one.
-pub enum Message {
-    /// Set the colour of the LED
-    SetColour(RGB8),
-    /// Set the brightness of the LED
-    SetBrightness(u8),
-    /// Turn the LED off
-    Off,
-    /// Turn the LED on
-    On,
-    /// Set the LED to a sequence of colours
-    SetSequence((&'static [RGB8], Duration, Repeat)),
-}
+pub struct LedActor(ActorInbox<Message>);
 
-/// The actor's configuration, to be shared with other actors to initialize this actor.
-pub struct Config {
-    pub led: Led,
+impl LedActor {
+    /// Turn on the LED
+    pub fn on(&self) -> bool {
+        self.0.try_send(Message::On).is_ok()
+    }
+    /// Turn off the LED
+    pub fn off(&self) -> bool {
+        self.0.try_send(Message::Off).is_ok()
+    }
+    /// Set the colour of the LED
+    pub fn set_colour(&self, colour: RGB8) -> bool {
+        self.0.try_send(Message::SetColour(colour)).is_ok()
+    }
+    /// Set the brightness of the LED
+    pub fn set_brightness(&self, level: u8) -> bool {
+        self.0.try_send(Message::SetBrightness(level)).is_ok()
+    }
+    /// Set the LED to a sequence of colours
+    pub fn set_sequence(
+        &self,
+        sequence: &'static [RGB8],
+        step_duration: Duration,
+        repeat: Repeat,
+    ) -> bool {
+        self.0
+            .try_send(Message::SetSequence((sequence, step_duration, repeat)))
+            .is_ok()
+    }
 }
 
 /// Create a new actor with a spawner and a configuration.
 /// This pattern could be made into a macro to simplify the actor creation.
-pub fn spawn_actor(spawner: Spawner, config: Config) -> Result<ActorInbox<Message>, SpawnError> {
+pub fn spawn_actor(spawner: Spawner, led: Led) -> Result<LedActor, SpawnError> {
     static CONTEXT: ActorContext<Actor> = ActorContext::new();
     let inbox = CONTEXT.address();
-    spawner.spawn(actor_task(&CONTEXT, Actor::new(spawner, config, inbox)))?;
-    Ok(inbox)
+    spawner.spawn(actor_task(&CONTEXT, Actor::new(spawner, led, inbox)))?;
+    Ok(LedActor(inbox))
 }
 
 mod actor_private {
@@ -74,6 +89,21 @@ mod actor_private {
     use ector::{DynamicAddress, Inbox};
 
     use super::*;
+
+    /// The actor's message type, communicating the finite states of the actor.
+    pub(super) enum Message {
+        /// Set the colour of the LED
+        SetColour(RGB8),
+        /// Set the brightness of the LED
+        SetBrightness(u8),
+        /// Turn the LED off
+        Off,
+        /// Turn the LED on
+        On,
+        /// Set the LED to a sequence of colours
+        SetSequence((&'static [RGB8], Duration, Repeat)),
+    }
+
     /// A scheduler to run a sequence of actions.
     struct Scheduler {
         /// The timer to schedule the next action
@@ -128,12 +158,12 @@ mod actor_private {
 
     impl Actor {
         /// Create a new actor with a spawner and a configuration.
-        pub(super) fn new(_: Spawner, config: Config, _: ActorInbox<Message>) -> Self {
+        pub(super) fn new(_: Spawner, led: Led, _: ActorInbox<Message>) -> Self {
             // Opportunity to do any setup before mounting the actor
             // this could include spawning child actors or setting up resources
             // we have access to our own inbox here to send down to child actors.
             Self {
-                led: config.led,
+                led,
                 scheduler: None,
                 colour: RGB8 { r: 0, g: 0, b: 0 },
                 brightness: 50,
@@ -145,14 +175,14 @@ mod actor_private {
             match msg {
                 Message::SetColour(colour) => {
                     self.colour = colour;
-                    write(&mut self.led, colour, self.brightness)
+                    write(&mut self.led, colour, self.brightness).await
                 }
                 Message::SetBrightness(level) => {
                     self.brightness = level;
-                    write(&mut self.led, self.colour, level)
+                    write(&mut self.led, self.colour, level).await
                 }
-                Message::Off => write(&mut self.led, BLACK, 0),
-                Message::On => write(&mut self.led, self.colour, self.brightness),
+                Message::Off => write(&mut self.led, BLACK, 0).await,
+                Message::On => write(&mut self.led, self.colour, self.brightness).await,
                 Message::SetSequence((sequence, period, repeat)) => {
                     self.scheduler = Some(Scheduler {
                         timer: Timer::after(period),
@@ -173,7 +203,7 @@ mod actor_private {
             // run the next action in the sequence.
             match scheduler.sequence.get(scheduler.index) {
                 Some(&colour) => {
-                    write(&mut self.led, colour, self.brightness);
+                    write(&mut self.led, colour, self.brightness).await;
                     scheduler.index += 1;
                 }
                 None => {

@@ -9,45 +9,34 @@
 #![no_std]
 #![no_main]
 
-use core::future::pending;
-
+use embassy_futures::select::select;
 use esp_backtrace as _;
 
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
 
-use esp32c3_devkit_demo::{
-    ambient::{self, Message},
-    bsp::Board,
-};
+use esp32c3_devkit_demo::{ambient::AmbientSensor, bsp::Board};
 
 #[esp_hal_embassy::main]
-async fn main(spawner: Spawner) -> ! {
+async fn main(_spawner: Spawner) {
     esp_println::logger::init_logger_from_env();
 
     let board = Board::init();
 
-    // For now we only have one element in the configuration.
-    // But we could add more elements to the configuration to pass to the actor.
-    let config = ambient::Config {
-        i2c_bus: board.i2c_bus,
-    };
-    let actor = ambient::spawn_actor(spawner, config).expect("failed to spawn");
+    let mut ambient = AmbientSensor::new(board.i2c_bus);
 
-    // Set the power mode to normal mode.
-    actor
-        .send(Message::SetPowerMode(shtcx::PowerMode::NormalMode))
-        .await;
-
-    Timer::after_secs(1).await;
-
-    // Start the actor to read the temperature and humidity every 20 seconds.
-    // This device has a slow read time.
-    actor.send(Message::Start(Duration::from_secs(20))).await;
-
-    // Stop the actor after 60 seconds.
-    Timer::after_secs(60).await;
-    actor.send(Message::Stop).await;
-
-    pending().await
+    // select(
+    //     // read the sensor every 2 seconds
+    //     ambient.read(Duration::from_secs(1), Duration::from_secs(5), None),
+    //     // for 10 seconds
+    //     Timer::after(Duration::from_secs(60)),
+    // )
+    // .await;
+    select(
+        // read the sensor every 2 seconds
+        ambient.read_low_power(Duration::from_millis(800), Duration::from_millis(800), None),
+        // for 10 seconds
+        Timer::after(Duration::from_secs(10)),
+    )
+    .await;
 }
