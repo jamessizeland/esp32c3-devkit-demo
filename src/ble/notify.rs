@@ -1,5 +1,3 @@
-use log::info;
-
 use super::GattServer;
 
 impl GattServer<'_> {
