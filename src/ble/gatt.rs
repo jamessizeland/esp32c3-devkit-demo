@@ -4,10 +4,10 @@ use trouble_host::prelude::*;
 pub struct AmbientService {
     #[descriptor(uuid = descriptors::MEASUREMENT_DESCRIPTION, read, value = "Temperature °C")]
     #[characteristic(uuid = characteristic::TEMPERATURE, read, notify)]
-    pub temperature: f32,
+    pub temperature: i16,
     #[descriptor(uuid = descriptors::MEASUREMENT_DESCRIPTION, read, value = "Humidity %")]
     #[characteristic(uuid = characteristic::HUMIDITY, read, notify)]
-    pub humidity: f32,
+    pub humidity: i16,
 }
 
 #[gatt_service(uuid = "911fd452-297b-408f-8f53-ada4e57647dd")]

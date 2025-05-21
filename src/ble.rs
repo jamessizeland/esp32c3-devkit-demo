@@ -111,11 +111,11 @@ impl<'values> GattServer<'values> {
                 }
                 GattConnectionEvent::Gatt { event: Ok(event) } => {
                     match &event {
-                        GattEvent::Read(_event) => {
-                            info!("[gatt] Unhandled Read event occured");
+                        GattEvent::Read(event) => {
+                            info!("[gatt] Read event occured for handle: {}", event.handle());
                         }
-                        GattEvent::Write(_event) => {
-                            info!("[gatt] Unhandled Write event occured");
+                        GattEvent::Write(event) => {
+                            info!("[gatt] Write event occured for handle: {}", event.handle());
                         }
                     }
                     match event.accept() {
