@@ -8,13 +8,10 @@
 #![no_std]
 #![no_main]
 
-use esp_backtrace as _;
-
 use core::future::pending;
-
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
-
+use esp_backtrace as _;
 use esp_hal::gpio::Input;
 use esp32c3_devkit_demo::{
     bsp::Board,
@@ -45,10 +42,10 @@ async fn button_task(mut button: Input<'static>, mut led: Led) {
     let debounce = Duration::from_millis(50);
     loop {
         button.wait_for_low().await;
-        led::write(&mut led, BLUE, 30);
+        led::write(&mut led, BLUE, 30).await.unwrap();
         Timer::after(debounce).await;
         button.wait_for_high().await;
-        led::write(&mut led, BLACK, 30);
+        led::write(&mut led, BLACK, 30).await.unwrap();
         Timer::after(debounce).await;
     }
 }

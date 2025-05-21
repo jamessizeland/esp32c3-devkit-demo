@@ -9,13 +9,13 @@
 #![no_std]
 #![no_main]
 
-use embassy_futures::select::select;
-use esp_backtrace as _;
-
 use embassy_executor::Spawner;
+use embassy_futures::select::{Either, select};
 use embassy_time::{Duration, Timer};
-
+use esp_backtrace as _;
 use esp32c3_devkit_demo::{ambient::AmbientSensor, bsp::Board};
+use log::info;
+use shtcx::PowerMode;
 
 #[esp_hal_embassy::main]
 async fn main(_spawner: Spawner) {
@@ -24,19 +24,29 @@ async fn main(_spawner: Spawner) {
     let board = Board::init();
 
     let mut ambient = AmbientSensor::new(board.i2c_bus);
+    ambient
+        .set_power_mode(PowerMode::NormalMode, Duration::from_millis(1000))
+        .unwrap();
+    // read the sensor for 10 seconds and then stop
+    run_task(&mut ambient).await;
 
-    // select(
-    //     // read the sensor every 2 seconds
-    //     ambient.read(Duration::from_secs(1), Duration::from_secs(5), None),
-    //     // for 10 seconds
-    //     Timer::after(Duration::from_secs(60)),
-    // )
-    // .await;
-    select(
-        // read the sensor every 2 seconds
-        ambient.read_low_power(Duration::from_millis(800), Duration::from_millis(800), None),
-        // for 10 seconds
+    ambient
+        .set_power_mode(PowerMode::LowPower, Duration::from_millis(10))
+        .unwrap();
+    // read the sensor for 10 seconds and then stop
+    run_task(&mut ambient).await;
+}
+
+/// Run the task to read the sensor for 10 seconds and then stop
+/// This will read the sensor every 2 seconds and print the result.
+/// If the sensor is not available, it will print an error message.
+async fn run_task(sensor: &mut AmbientSensor) {
+    let res = select(
+        sensor.start_task(Duration::from_secs(2), None),
         Timer::after(Duration::from_secs(10)),
     )
     .await;
+    if let Either::First(err) = res {
+        info!("Error reading sensor: {:?}", err);
+    };
 }

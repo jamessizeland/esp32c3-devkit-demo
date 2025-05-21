@@ -9,12 +9,9 @@
 #![no_main]
 
 use core::future::pending;
-
-use esp_backtrace as _;
-
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
-
+use esp_backtrace as _;
 use esp32c3_devkit_demo::{bsp::Board, imu::ImuSensor};
 
 #[esp_hal_embassy::main]
@@ -32,7 +29,9 @@ async fn main(_spawner: Spawner) -> ! {
     Timer::after_secs(1).await;
 
     // Start the imu to read the sensor every 20 milliseconds.
-    imu.read(Duration::from_millis(20), None).await;
+    imu.start_task(Duration::from_millis(20), None)
+        .await
+        .unwrap();
 
     pending().await
 }
