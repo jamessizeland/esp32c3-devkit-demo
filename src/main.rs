@@ -29,7 +29,7 @@ async fn main(spawner: embassy_executor::Spawner) -> ! {
         GattServer::start(name, appearance, spawner, board.ble_controller);
 
     let led = led::spawn_actor(spawner, board.led).expect("failed to spawn led actor");
-    led.set_brightness(50);
+    led.set_brightness(50).unwrap();
     let sequence = &[RED, GREEN, BLUE];
 
     let mut imu = ImuSensor::new(board.i2c_bus);
@@ -38,14 +38,17 @@ async fn main(spawner: embassy_executor::Spawner) -> ! {
 
     loop {
         info!("Advertising for BLE Connection...");
-        led.set_sequence(sequence, Duration::from_secs(1), Repeat::Forever);
+        led.set_sequence(sequence, Duration::from_secs(1), Repeat::Forever)
+            .unwrap();
         let adv = advertise("Esp32c3-devkit-rust", &mut peripheral, server);
         if let Ok(conn) = adv.await {
             let ble = (server, &conn);
-            led.off();
+            led.off().unwrap();
             imu.set_power_mode(ImuMode::SixAxisLowNoise)
                 .expect("sensor available");
-            ambient.set_power_mode(AmbMode::LowPower, Duration::from_millis(100));
+            ambient
+                .set_power_mode(AmbMode::LowPower, Duration::from_millis(100))
+                .unwrap();
 
             let imu_task = imu.start_task(Duration::from_hz(20), Some(ble));
             let amb_task = ambient.start_task(Duration::from_hz(1), Some(ble));

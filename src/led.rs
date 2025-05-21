@@ -26,7 +26,7 @@ pub type Led = SmartLedsAdapterAsync<rmt::Channel<esp_hal::Async, 0>, 25>;
 pub async fn write(led: &mut Led, colour: RGB8, level: u8) -> Result<(), AppError> {
     led.write(brightness(gamma([colour].into_iter()), level))
         .await
-        .map_err(|e| AppError::LedWrite(e))
+        .map_err(AppError::LedWrite)
 }
 
 /// The actor's repeat mode.
