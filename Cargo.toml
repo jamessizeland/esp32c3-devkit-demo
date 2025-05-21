@@ -52,6 +52,7 @@ esp-wifi = { version = "0.13.0", default-features = false, features = [
 ] }
 trouble-host = { version = "0.1.0", features = ["gatt", "log"] }
 bt-hci = { version = "0.2.1", features = ["log"] }
+thiserror = { version = "2.0.12", default-features = false }
 
 
 [profile.dev]

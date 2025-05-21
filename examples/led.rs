@@ -27,20 +27,22 @@ async fn main(spawner: Spawner) -> ! {
     let mut board = Board::init();
 
     // Can write to the LED directly.
-    led::write(&mut board.led, BLUE, 50);
+    led::write(&mut board.led, BLUE, 50).await.unwrap();
     Timer::after_secs(1).await;
 
     // Can also spawn an actor to control the LED asynchronously.
     // The actor inbox can be shared with other actors to send messages to this actor.
     let led = led::spawn_actor(spawner, board.led).expect("failed to spawn led actor");
-    led.set_brightness(50);
-    led.set_colour(YELLOW);
+
+    led.set_brightness(50).unwrap();
+    led.set_colour(YELLOW).unwrap();
     Timer::after_secs(1).await;
 
     // This sequence will run forever until the actor is dropped, or another message is sent.
     // It will run as a background task.
     let sequence = &[RED, GREEN, BLUE];
-    led.set_sequence(sequence, Duration::from_secs(1), Repeat::Forever);
+    led.set_sequence(sequence, Duration::from_secs(1), Repeat::Forever)
+        .unwrap();
 
     pending().await
 }

@@ -1,5 +1,6 @@
 //! A simple struct to read from the Ambient Sensor.
 
+use crate::AppError;
 use crate::ble::BleConnection;
 use crate::bsp::I2cBus;
 use crate::bsp::I2cBusDevice;
@@ -31,21 +32,26 @@ impl AmbientSensor {
         }
     }
     /// Set the power mode of the sensor.
-    pub fn set_power_mode(&mut self, power_mode: PowerMode, read_time: Duration) {
+    pub fn set_power_mode(
+        &mut self,
+        power_mode: PowerMode,
+        read_time: Duration,
+    ) -> Result<(), AppError> {
         let max_read_time = {
             let val = shtcx::max_measurement_duration(&self.device, power_mode);
             Duration::from_millis(val.into())
         };
         info!("Max read time: {:?} ms", max_read_time.as_millis());
         info!("Read time: {:?} ms", read_time.as_millis());
-        assert!(
-            max_read_time >= read_time,
-            "Read time ({}ms) must be less than {}ms",
-            read_time.as_millis(),
-            max_read_time.as_millis()
-        );
+        if read_time > max_read_time {
+            return Err(AppError::InvalidReadTime(
+                read_time.as_millis(),
+                max_read_time.as_millis(),
+            ));
+        };
         self.power_mode = power_mode;
         self.read_time = read_time;
+        Ok(())
     }
 
     /// Start reading the sensor at a given period in set Power Mode.
@@ -58,17 +64,20 @@ impl AmbientSensor {
         &mut self,
         period: Duration,
         ble: Option<BleConnection<'_, '_>>,
-    ) -> Result<(), shtcx::Error<I2cDeviceError<Error>>> {
-        assert!(
-            period >= self.read_time,
-            "Period must be greater than read time"
-        );
+    ) -> Result<(), AppError> {
+        if self.read_time > period {
+            return Err(AppError::InvalidReadPeriod(
+                period.as_millis(),
+                self.read_time.as_millis(),
+            ));
+        }
         info!("Taking measurement every {:?} seconds", period.as_secs());
         loop {
             let now = Instant::now();
             let meas = self
                 .read_measurement(self.read_time, self.power_mode)
-                .await?;
+                .await
+                .map_err(|_| AppError::AmbientI2cRead)?;
             if let Some((server, conn)) = ble {
                 if let Err(error) = server.notify_ambient(conn, meas).await {
                     log::error!("Error notifying BLE: {:?}", error);

@@ -113,9 +113,18 @@ impl ImuSensor {
                     log::error!("Error notifying BLE: {:?}", error);
                 }
             } else {
-                log::info!("Gyro: {:?}", meas.gyro);
-                log::info!("Accel: {:?}", meas.accel);
-                log::info!("Inclination: {:?}", meas.inclination);
+                log::info!(
+                    "G: ({:.3}, {:.3}, {:.3}) | A: ({:.3}, {:.3}, {:.3}) | I: ({:.3}, {:.3}, {:.3})",
+                    meas.gyro.x,
+                    meas.gyro.y,
+                    meas.gyro.z,
+                    meas.accel.x,
+                    meas.accel.y,
+                    meas.accel.z,
+                    meas.inclination.map(|incl| incl.x).unwrap_or_default(),
+                    meas.inclination.map(|incl| incl.y).unwrap_or_default(),
+                    meas.inclination.map(|incl| incl.z).unwrap_or_default()
+                );
             }
             Timer::after(period - now.elapsed()).await;
         }

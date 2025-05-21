@@ -5,11 +5,11 @@
 //! The actor can be created with a spawner and a configuration.
 
 use actor_private::*;
-use ector::ActorContext;
+use ector::{ActorContext, mutex::NoopRawMutex};
 use embassy_executor::Spawner;
 use esp_hal::rmt;
 use esp_hal_smartled::SmartLedsAdapterAsync;
-use log::{error, info};
+use log::info;
 use smart_leds::{RGB8, SmartLedsWriteAsync, brightness, colors::BLACK, gamma};
 use {
     core::future::pending,
@@ -18,18 +18,15 @@ use {
     embassy_time::{Duration, Timer},
 };
 
-use crate::ActorInbox;
+use crate::{ActorInbox, AppError};
 
 pub type Led = SmartLedsAdapterAsync<rmt::Channel<esp_hal::Async, 0>, 25>;
 
 /// Set the colour and brightness of the specified LED.
-pub async fn write(led: &mut Led, colour: RGB8, level: u8) {
-    if let Err(err) = led
-        .write(brightness(gamma([colour].into_iter()), level))
+pub async fn write(led: &mut Led, colour: RGB8, level: u8) -> Result<(), AppError> {
+    led.write(brightness(gamma([colour].into_iter()), level))
         .await
-    {
-        error!("Failed to write to LED: {:?}", err);
-    };
+        .map_err(|e| AppError::LedWrite(e))
 }
 
 /// The actor's repeat mode.
@@ -47,20 +44,28 @@ pub struct LedActor(ActorInbox<Message>);
 
 impl LedActor {
     /// Turn on the LED
-    pub fn on(&self) -> bool {
-        self.0.try_send(Message::On).is_ok()
+    pub fn on(&self) -> Result<(), AppError> {
+        self.0
+            .try_send(Message::On)
+            .map_err(|_| AppError::LedActorSend)
     }
     /// Turn off the LED
-    pub fn off(&self) -> bool {
-        self.0.try_send(Message::Off).is_ok()
+    pub fn off(&self) -> Result<(), AppError> {
+        self.0
+            .try_send(Message::Off)
+            .map_err(|_| AppError::LedActorSend)
     }
     /// Set the colour of the LED
-    pub fn set_colour(&self, colour: RGB8) -> bool {
-        self.0.try_send(Message::SetColour(colour)).is_ok()
+    pub fn set_colour(&self, colour: RGB8) -> Result<(), AppError> {
+        self.0
+            .try_send(Message::SetColour(colour))
+            .map_err(|_| AppError::LedActorSend)
     }
     /// Set the brightness of the LED
-    pub fn set_brightness(&self, level: u8) -> bool {
-        self.0.try_send(Message::SetBrightness(level)).is_ok()
+    pub fn set_brightness(&self, level: u8) -> Result<(), AppError> {
+        self.0
+            .try_send(Message::SetBrightness(level))
+            .map_err(|_| AppError::LedActorSend)
     }
     /// Set the LED to a sequence of colours
     pub fn set_sequence(
@@ -68,17 +73,17 @@ impl LedActor {
         sequence: &'static [RGB8],
         step_duration: Duration,
         repeat: Repeat,
-    ) -> bool {
+    ) -> Result<(), AppError> {
         self.0
             .try_send(Message::SetSequence((sequence, step_duration, repeat)))
-            .is_ok()
+            .map_err(|_| AppError::LedActorSend)
     }
 }
 
 /// Create a new actor with a spawner and a configuration.
 /// This pattern could be made into a macro to simplify the actor creation.
 pub fn spawn_actor(spawner: Spawner, led: Led) -> Result<LedActor, SpawnError> {
-    static CONTEXT: ActorContext<Actor> = ActorContext::new();
+    static CONTEXT: ActorContext<Actor, NoopRawMutex, 10> = ActorContext::new();
     let inbox = CONTEXT.address();
     spawner.spawn(actor_task(&CONTEXT, Actor::new(spawner, led, inbox)))?;
     Ok(LedActor(inbox))
@@ -87,6 +92,7 @@ pub fn spawn_actor(spawner: Spawner, led: Led) -> Result<LedActor, SpawnError> {
 mod actor_private {
 
     use ector::{DynamicAddress, Inbox};
+    use log::error;
 
     use super::*;
 
@@ -148,10 +154,12 @@ mod actor_private {
                         None => pending().await,
                     }
                 };
-                match select(inbox.next(), deadline).await {
+                if let Err(err) = match select(inbox.next(), deadline).await {
                     Either::First(action) => self.act(action).await,
                     Either::Second(_) => self.next().await,
-                }
+                } {
+                    error!("Error in LED actor: {:?}", err);
+                };
             }
         }
     }
@@ -170,7 +178,7 @@ mod actor_private {
             }
         }
         /// The message handler
-        async fn act(&mut self, msg: Message) {
+        async fn act(&mut self, msg: Message) -> Result<(), AppError> {
             self.scheduler = None; // cancel any scheduled actions
             match msg {
                 Message::SetColour(colour) => {
@@ -191,19 +199,20 @@ mod actor_private {
                         index: 0,
                         repeat,
                     });
+                    Ok(())
                 }
             }
         }
         /// Run the next scheduled action.
-        async fn next(&mut self) {
+        async fn next(&mut self) -> Result<(), AppError> {
             let Some(scheduler) = self.scheduler.as_mut() else {
-                return; // no scheduled action
+                return Ok(()); // no scheduled action
             };
             scheduler.timer = Timer::after(scheduler.period);
             // run the next action in the sequence.
             match scheduler.sequence.get(scheduler.index) {
                 Some(&colour) => {
-                    write(&mut self.led, colour, self.brightness).await;
+                    write(&mut self.led, colour, self.brightness).await?;
                     scheduler.index += 1;
                 }
                 None => {
@@ -215,13 +224,17 @@ mod actor_private {
                         Repeat::Forever => scheduler.index = 0,
                     }
                 }
-            }
+            };
+            Ok(())
         }
     }
 
     #[embassy_executor::task]
     /// The actor's task, to be spawned by the actor's context.
-    pub(super) async fn actor_task(context: &'static ActorContext<Actor>, actor: Actor) {
+    pub(super) async fn actor_task(
+        context: &'static ActorContext<Actor, NoopRawMutex, 10>,
+        actor: Actor,
+    ) {
         context.mount(actor).await;
     }
 }
