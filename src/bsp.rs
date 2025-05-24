@@ -69,6 +69,8 @@ pub struct Board {
 impl Board {
     /// Initialize the board.
     pub fn init() -> Self {
+        esp_println::logger::init_logger_from_env();
+
         let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
         let p = esp_hal::init(config);
         esp_alloc::heap_allocator!(size: 72 * 1024);
