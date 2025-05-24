@@ -11,7 +11,6 @@
 use core::future::pending;
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
-use esp_backtrace as _;
 use esp_hal::gpio::Input;
 use esp32c3_devkit_demo::{
     bsp::Board,
@@ -19,10 +18,10 @@ use esp32c3_devkit_demo::{
 };
 use smart_leds::colors::{BLACK, BLUE};
 
+use esp_backtrace as _;
+
 #[esp_hal_embassy::main]
 async fn main(spawner: Spawner) -> ! {
-    esp_println::logger::init_logger_from_env();
-
     let board = Board::init();
 
     spawner.must_spawn(button_task(board.button, board.led));

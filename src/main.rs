@@ -20,7 +20,6 @@ use esp_backtrace as _;
 
 #[esp_hal_embassy::main]
 async fn main(spawner: embassy_executor::Spawner) -> ! {
-    esp_println::logger::init_logger_from_env();
     let name = "Esp devkit demo";
     let appearance = &appearance::sensor::MULTISENSOR;
     let board = Board::init();

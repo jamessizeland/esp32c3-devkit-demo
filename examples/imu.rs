@@ -2,8 +2,7 @@
 //!
 //! This example demonstrates how to read the accelerometer and gyroscope data from the onboard ICM42670 sensor.
 //! The ICM42670 sensor is a low-power sensor that can be used to measure acceleration and angular velocity.
-//! This example demonstrates how to use an actor to read the sensor every 20 seconds.
-//! The actor will read the sensor for 1 minute before stopping.
+//! This example demonstrates how to use an actor to read the sensor every 20 milliseconds.
 
 #![no_std]
 #![no_main]
@@ -11,13 +10,12 @@
 use core::future::pending;
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
-use esp_backtrace as _;
 use esp32c3_devkit_demo::{bsp::Board, imu::ImuSensor};
+
+use esp_backtrace as _;
 
 #[esp_hal_embassy::main]
 async fn main(_spawner: Spawner) -> ! {
-    esp_println::logger::init_logger_from_env();
-
     let board = Board::init();
 
     let mut imu = ImuSensor::new(board.i2c_bus);
