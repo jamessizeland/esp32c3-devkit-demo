@@ -5,54 +5,57 @@ version = "0.1.0"
 
 [dependencies]
 # HAL stuff
-esp-hal = { version = "^1.0.0-beta.0", features = ["unstable", "log"] }
+esp-hal = { version = "^1.0.0-beta.1", features = ["unstable", "log-04"] }
 embedded-io = "0.6.1"
 embedded-io-async = "0.6.1"
 critical-section = "1.2.0"
 
 # Logging
-esp-println = { version = "0.13.1", features = ["log"] }
+esp-println = { version = "0.14.0", features = ["log-04"] }
 log = { version = "0.4.27" }
-esp-backtrace = { version = "0.15.1", features = [
+esp-backtrace = { version = "0.16.0", features = [
   "exception-handler",
   "panic-handler",
   "println",
 ] }
 
 # Misc stuff
+thiserror = { version = "2.0.12", default-features = false }
 heapless = { version = "0.8.0", default-features = false }
-static_cell = { version = "2.1.0" }
 ector = { version = "0.7.0", default-features = false }
+static_cell = { version = "2.1.0" }
 
 # Embassy stuff
-embassy-executor = { version = "0.7.0", features = ["task-arena-size-20480"] }
-embassy-time = { version = "0.4.0", features = ["generic-queue-8"] }
-esp-hal-embassy = { version = "0.7.0", features = [] }
+embassy-executor = { version = "0.7.0", features = [
+  # "task-arena-size-20480",
+  "log",
+] }
+embassy-time = { version = "0.4.0", features = ["generic-queue-8", "log"] }
+esp-hal-embassy = { version = "0.8.1", features = [] }
 embassy-embedded-hal = "0.3.0"
-embassy-sync = "0.6.0"
+embassy-sync = "0.7.0"
 embassy-futures = "0.1.1"
 
 # RGB LED stuff
 smart-leds = "0.4.0"
-esp-hal-smartled = { git = "https://github.com/esp-rs/esp-hal-community.git" }
+esp-hal-smartled = "0.15.0"
 
 # I2c Peripherals
 shtcx = "1.0.0"      # SHTC3 temperature and humidity sensor
 icm42670 = "0.2.0"   # ICM42670 IMU
-imu-fusion = "0.2.5"
+imu-fusion = "0.2.6"
 micromath = "2.1.0"
 
 # BLE stuff
-esp-alloc = { version = "0.7.0" }
-esp-wifi = { version = "0.13.0", default-features = false, features = [
+esp-alloc = { version = "0.8.0" }
+esp-wifi = { version = "0.14.1", default-features = false, features = [
   "ble",
+  "log-04",
   "esp-alloc",
   "builtin-scheduler",
-  "log",
 ] }
 trouble-host = { version = "0.1.0", features = ["gatt", "log"] }
-bt-hci = { version = "0.2.1", features = ["log"] }
-thiserror = { version = "2.0.12", default-features = false }
+# bt-hci = { version = "0.3.2", features = ["log"] }
 
 
 [profile.dev]
@@ -78,3 +81,7 @@ esp32c3 = [
   "esp-wifi/esp32c3",
   "esp-hal-embassy/esp32c3",
 ]
+
+[patch.crates-io]
+trouble-host = { git = "https://github.com/embassy-rs/trouble.git" }
+ector = { git = "https://github.com/jamessizeland/ector-fork", branch = "update-embassy-sync" }

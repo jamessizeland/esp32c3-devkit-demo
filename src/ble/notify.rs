@@ -1,10 +1,12 @@
+use trouble_host::prelude::*;
+
 use super::GattServer;
 
 impl GattServer<'_> {
     /// Notify the BLE central with the latest IMU data.
     pub async fn notify_imu(
         &self,
-        conn: &trouble_host::gatt::GattConnection<'_, '_>,
+        conn: &GattConnection<'_, '_, DefaultPacketPool>,
         measurement: crate::imu::Measurement,
     ) -> Result<(), trouble_host::Error> {
         let accel = measurement.accel;
@@ -26,7 +28,7 @@ impl GattServer<'_> {
     /// Notify the BLE central with the latest Temperature and Humidity data.
     pub async fn notify_ambient(
         &self,
-        conn: &trouble_host::gatt::GattConnection<'_, '_>,
+        conn: &GattConnection<'_, '_, DefaultPacketPool>,
         measurement: shtcx::Measurement,
     ) -> Result<(), trouble_host::Error> {
         // measurements come in as f32 but Gatt Characteristics 0x2a6e and 0x2a6f

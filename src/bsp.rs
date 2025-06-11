@@ -45,6 +45,7 @@ use esp_hal_smartled::{SmartLedsAdapterAsync, buffer_size_async};
 use esp_wifi::EspWifiController;
 use log::info;
 use static_cell::StaticCell;
+use trouble_host::prelude::*;
 
 use crate::{ble::BleController, led::Led};
 
@@ -113,7 +114,7 @@ impl Board {
             );
             let device = p.BT;
             let transport = esp_wifi::ble::controller::BleConnector::new(init, device);
-            bt_hci::controller::ExternalController::new(transport)
+            ExternalController::new(transport)
         };
         let pull_up = InputConfig::default().with_pull(Pull::Up);
         Self {

@@ -18,27 +18,27 @@ const L2CAP_MTU: usize = 256;
 
 const SLOTS: usize = 20;
 
-pub type BleController = bt_hci::controller::ExternalController<BleConnector<'static>, SLOTS>;
+pub type BleController = ExternalController<BleConnector<'static>, SLOTS>;
 
-type BleResources = HostResources<CONN_MAX, L2CAP_CHANNELS_MAX, L2CAP_MTU>;
+type BleResources = HostResources<DefaultPacketPool, CONN_MAX, L2CAP_CHANNELS_MAX, L2CAP_MTU>;
 
 /// Helper type that combines the long lived server struct with the more ephemeral current connection.
 pub type BleConnection<'values, 'server> = (
     &'server GattServer<'values>,
-    &'server GattConnection<'values, 'server>,
+    &'server GattConnection<'values, 'server, DefaultPacketPool>,
 );
 
 #[embassy_executor::task]
-async fn ble_task(mut runner: Runner<'static, BleController>) {
+async fn ble_task(mut runner: Runner<'static, BleController, DefaultPacketPool>) {
     runner.run().await.expect("Error in BLE task");
 }
 
 /// Create an advertiser to use to connect to a BLE Central, and wait for it to connect.
 pub async fn advertise<'server, 'values, C: Controller>(
     name: &'values str,
-    peripheral: &mut Peripheral<'values, C>,
+    peripheral: &mut Peripheral<'values, C, DefaultPacketPool>,
     server: &'server GattServer<'values>,
-) -> Result<GattConnection<'values, 'server>, BleHostError<C::Error>> {
+) -> Result<GattConnection<'values, 'server, DefaultPacketPool>, BleHostError<C::Error>> {
     let mut advertiser_data = [0; 31];
     AdStructure::encode_slice(
         &[
@@ -70,7 +70,10 @@ impl<'values> GattServer<'values> {
         appearance: impl Into<&'static BluetoothUuid16>,
         spawner: embassy_executor::Spawner,
         controller: BleController,
-    ) -> (&'static Self, Peripheral<'values, BleController>) {
+    ) -> (
+        &'static Self,
+        Peripheral<'values, BleController, DefaultPacketPool>,
+    ) {
         let address = Address::random([0x42, 0x5A, 0xE3, 0x1E, 0x83, 0xE7]);
         info!("Our address = {:?}", address);
 
@@ -79,7 +82,8 @@ impl<'values> GattServer<'values> {
             RESOURCES.init(BleResources::new())
         };
         let stack = {
-            static STACK: StaticCell<Stack<'_, BleController>> = StaticCell::new();
+            static STACK: StaticCell<Stack<'_, BleController, DefaultPacketPool>> =
+                StaticCell::new();
             STACK.init(trouble_host::new(controller, resources).set_random_address(address))
         };
         let host = stack.build();
@@ -101,7 +105,7 @@ impl<'values> GattServer<'values> {
     /// Background task to process BLE IO events.
     pub async fn start_task<'server>(
         &self,
-        conn: &GattConnection<'values, 'server>,
+        conn: &GattConnection<'values, 'server, DefaultPacketPool>,
     ) -> Result<(), trouble_host::Error> {
         let reason = loop {
             match conn.next().await {
