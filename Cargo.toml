@@ -27,7 +27,7 @@ static_cell = { version = "2.1.0" }
 
 # Embassy stuff
 embassy-executor = { version = "0.7.0", features = [
-  # "task-arena-size-20480",
+  "task-arena-size-20480",
   "log",
 ] }
 embassy-time = { version = "0.4.0", features = ["generic-queue-8", "log"] }
@@ -83,5 +83,5 @@ esp32c3 = [
 ]
 
 [patch.crates-io]
-trouble-host = { git = "https://github.com/embassy-rs/trouble.git" }
-ector = { git = "https://github.com/jamessizeland/ector-fork", branch = "update-embassy-sync" }
+trouble-host = { git = "https://github.com/embassy-rs/trouble.git", rev = "cb4b2cd424cdb2af54bad52922798a58d8786d7f" }
+ector = { git = "https://github.com/drogue-iot/ector.git", rev = "2a0d360883144104cd49717cdb3e254c6e86e502" }

@@ -204,7 +204,7 @@ dependencies = [
 [[package]]
 name = "ector"
 version = "0.7.0"
-source = "git+https://github.com/jamessizeland/ector-fork?branch=update-embassy-sync#4677a21eb69b9df44dec087918e1b8a5977c57da"
+source = "git+https://github.com/drogue-iot/ector.git?rev=2a0d360883144104cd49717cdb3e254c6e86e502#2a0d360883144104cd49717cdb3e254c6e86e502"
 dependencies = [
  "ector-macros",
  "embassy-executor",
@@ -217,7 +217,7 @@ dependencies = [
 [[package]]
 name = "ector-macros"
 version = "0.5.1"
-source = "git+https://github.com/jamessizeland/ector-fork?branch=update-embassy-sync#4677a21eb69b9df44dec087918e1b8a5977c57da"
+source = "git+https://github.com/drogue-iot/ector.git?rev=2a0d360883144104cd49717cdb3e254c6e86e502#2a0d360883144104cd49717cdb3e254c6e86e502"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1454,7 +1454,7 @@ checksum = "5d99f8c9a7727884afe522e9bd5edbfc91a3312b36a77b5fb8926e4c31a41801"
 [[package]]
 name = "trouble-host"
 version = "0.1.0"
-source = "git+https://github.com/embassy-rs/trouble.git#cb4b2cd424cdb2af54bad52922798a58d8786d7f"
+source = "git+https://github.com/embassy-rs/trouble.git?rev=cb4b2cd424cdb2af54bad52922798a58d8786d7f#cb4b2cd424cdb2af54bad52922798a58d8786d7f"
 dependencies = [
  "bt-hci",
  "embassy-futures",
@@ -1473,7 +1473,7 @@ dependencies = [
 [[package]]
 name = "trouble-host-macros"
 version = "0.1.0"
-source = "git+https://github.com/embassy-rs/trouble.git#cb4b2cd424cdb2af54bad52922798a58d8786d7f"
+source = "git+https://github.com/embassy-rs/trouble.git?rev=cb4b2cd424cdb2af54bad52922798a58d8786d7f#cb4b2cd424cdb2af54bad52922798a58d8786d7f"
 dependencies = [
  "convert_case",
  "darling",
